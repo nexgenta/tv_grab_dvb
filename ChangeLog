@@ -1,0 +1,21 @@
+CHANGES
+-------
+Version 0.5 - 08/05/2004
+- Fixed time output to be in local time.
+- Fixed decoding of UK 7/8 day epg
+- Bad date redefined to be before 24hrs ago and after 2 weeks from now
+- Documented option -d to parse bad date packets
+- Disabled default output of updates to stop duplicates
+( option -u to reenable output)
+- Improved memory management patch, thanks to Steve Davies
+                                                                                                    
+Version 0.3 - 30/04/2004
+- Ignore bad dates in the output (if end time was before now, discard)
+- Added comprehensive event decoding info
+- Added aspect information
+- Added audio information
+- Still havent fixed the timezone thing.
+                                                                                                    
+Version 0.2 - 20/04/2004
+- Initial Public Release
+
