@@ -278,28 +278,10 @@ void parseContentDescription(descr_content_t *dc)
 
 Tags should be output in this order
 
-'title'
-'sub-title'
-'desc'
-'credits'
-'date'
-'category'
-'language'
-'orig-language'
-'length'
-'icon'
-'url'
-'country'
-'episode-num'
-'video'
-'audio'
-'previously-shown'
-'premiere'
-'last-chance'
-'new'
-'subtitles'
-'rating'
-'star-rating'
+'title', 'sub-title', 'desc' , 'credits', 'date', 'category', 'language', 
+'orig-language', 'length', 'icon', 'url', 'country' ,'episode-num',
+'video' ,'audio', 'previously-shown' ,'premiere', 'last-chance',
+'new', 'subtitles' ,'rating', 'star-rating'
 */
 
 void parseDescription(char *desc,int len) 
@@ -320,25 +302,24 @@ void parseDescription(char *desc,int len)
                  case 0:
                    break;;
                  case 0x4D: //short evt desc, [title] [desc]
-                   if (round == 0)
-                     parseEventDescription(desc+i);
+		   if (round == 0)
+			   parseEventDescription(desc+i);
                    break;;
                  case 0x50: //component desc [video] [audio]
                    if (round == 2)
-                     parseComponentDescription(CastComponentDescriptor(desc+i), 1, &seen);
+			   parseComponentDescription(CastComponentDescriptor(desc+i), 1, &seen);
                    else if (round == 3)
-                     parseComponentDescription(CastComponentDescriptor(desc+i), 0, &seen);
+			   parseComponentDescription(CastComponentDescriptor(desc+i), 0, &seen);
                    break;;
                  case 0x54: //content desc [category]
                    if (round == 1)
-                     parseContentDescription(CastContentDescriptor(desc+i));
-                   break;;
+			   parseContentDescription(CastContentDescriptor(desc+i));
+		   break;;
                  case 0x64: //Data broadcast desc - Text Desc for Data components
                    break;;
                  default:
                    if (round == 0)
-                     printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n",tag,taglen);
-		
+			   printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n",tag,taglen);
                  }
              }
           
