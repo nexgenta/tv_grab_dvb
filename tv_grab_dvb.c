@@ -162,7 +162,7 @@ char *xmlify(char* s) {
 	while ( *s != '\0' ) {
 		if (*s == '&') {
 			*r++='&';*r++='a';*r++='m';*r++='p';*r++=';';
-		} else {
+                } else if (*s >= 20) {  // ignore control characters
 			*r++=*s;
 		}
 		s++;
@@ -188,11 +188,17 @@ int parseEventDescription(char *evtdesc)
    dsc[dsclen]=0;
 
    printf("\t<title lang=\"%s\">%s</title>\n",lang,xmlify(evt));
-   printf("\t<desc lang=\"%s\">%s</desc>\n",lang,xmlify(dsc));
+   if (*dsc)
+     printf("\t<desc lang=\"%s\">%s</desc>\n",lang,xmlify(dsc));
    
 }
 
-int parseComponentDescription(descr_component_t *dc)
+/* video is a flag, 1=> output the video information, 0=> output the
+   audio information.  seen is a pointer to a counter to ensure we
+   only output the first one of each (XMLTV can't cope with more than
+   one) */
+
+int parseComponentDescription(descr_component_t *dc, int video, int *seen)
 {
 	char buf[256];
 	char lang[3];
@@ -209,17 +215,25 @@ int parseComponentDescription(descr_component_t *dc)
 
      	switch(dc->stream_content) {
 		case 0x01: // Video Info
-			//if ((dc->component_type-1)&&0x08) //HD TV
-			//if ((dc->component_type-1)&&0x04) //30Hz else 25
-			printf("\t<video>\n");
-			printf("\t\t<aspect>%s</aspect>\n",lookup(&aspect_table,(dc->component_type-1)&&0x03));
-			printf("\t</video>\n");
-			break;
+                  if (video && !*seen)
+                    {
+                        //if ((dc->component_type-1)&&0x08) //HD TV
+                        //if ((dc->component_type-1)&&0x04) //30Hz else 25
+                        printf("\t<video>\n");
+                        printf("\t\t<aspect>%s</aspect>\n",lookup(&aspect_table,(dc->component_type-1)&&0x03));
+                        printf("\t</video>\n");
+                        (*seen)++;
+                        break;
+                    }
 		case 0x02: // Audio Info
+                  if (!video && !*seen)
+                    {
 			printf("\t<audio>\n");
 			printf("\t\t<stereo>%s</stereo>\n",lookup(&audio_table,(dc->component_type)));
 			printf("\t</audio>\n");
+                        (*seen)++;
 			break;;
+                    }
 		case 0x03: // Teletext Info
 			// FIXME: is there a suitable XMLTV output for this?
 			// if ((dc->component_type)&&0x10) //subtitles
@@ -257,40 +271,77 @@ int parseContentDescription(descr_content_t *dc)
 }
 
   
+/*
+
+Tags should be output in this order
+
+'title'
+'sub-title'
+'desc'
+'credits'
+'date'
+'category'
+'language'
+'orig-language'
+'length'
+'icon'
+'url'
+'country'
+'episode-num'
+'video'
+'audio'
+'previously-shown'
+'premiere'
+'last-chance'
+'new'
+'subtitles'
+'rating'
+'star-rating'
+*/
+
 int parseDescription(char *desc,int len) 
 {
-   int i,tag,taglen;
-   for (i=0;i<len;) 
+   int i,round,tag,taglen,seen;
+   for (round=0;round<4;round++)
      {
+       seen=0;                        // no video/audio seen in this round
+       for (i=0;i<len;)
+         {
 		
-        tag=*(desc+i) &0xff;
-	taglen=*(desc+i+1) &0xff;
-	if (taglen>0) 
-	  {
-	     switch (tag) 
-	       {
-		case 0:
-		  break;;
-		case 0x4D: //short evt desc
-		  parseEventDescription(desc+i);
-		  break;;
-	        case 0x50: //component desc
-		  parseComponentDescription(CastComponentDescriptor(desc+i));
-		  break;;
-		case 0x54: //content desc
-		  parseContentDescription(CastContentDescriptor(desc+i));
-		  break;;
-		case 0x64: //Data broadcast desc - Text Desc for Data components
-		  break;;
-		default:
-		  printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n",tag,taglen);
+           tag=*(desc+i) &0xff;
+           taglen=*(desc+i+1) &0xff;
+           if (taglen>0)
+             {
+               switch (tag)
+                 {
+                 case 0:
+                   break;;
+                 case 0x4D: //short evt desc, [title] [desc]
+                   if (round == 0)
+                     parseEventDescription(desc+i);
+                   break;;
+                 case 0x50: //component desc [video] [audio]
+                   if (round == 2)
+                     parseComponentDescription(CastComponentDescriptor(desc+i), 1, &seen);
+                   else if (round == 3)
+                     parseComponentDescription(CastComponentDescriptor(desc+i), 0, &seen);
+                   break;;
+                 case 0x54: //content desc [category]
+                   if (round == 1)
+                     parseContentDescription(CastContentDescriptor(desc+i));
+                   break;;
+                 case 0x64: //Data broadcast desc - Text Desc for Data components
+                   break;;
+                 default:
+                   if (round == 0)
+                     printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n",tag,taglen);
 		
-	       }
-	  } 
-	
-	i=i+taglen+2;
+                 }
+             }
+          
+           i=i+taglen+2;
+         }
      }
-   
 }
   
 int parseeit(char *eitbuf, int len) 
@@ -438,7 +489,7 @@ void finish_up() {
 int readEventTables(unsigned int to)
 {
 	int fd_epg,fd_time;
-	int n, seclen;
+	int n;
 	time_t t;
 	unsigned char buf[4096];
 	struct dmx_sct_filter_params sctFilterParams;
@@ -558,7 +609,7 @@ int main(int argc, char **argv)
  */
 	do_options(argc, argv);
 	fprintf(stderr,"\n");
-       	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+               printf("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n");
 	printf("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n");
 	printf("<tv generator-info-name=\"dvb-epg-gen\">\n");
 	readZapInfo();

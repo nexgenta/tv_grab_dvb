@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <string.h>
+
 #include "lookup.h"
 
 extern char* lookup(struct lookup_table *l, int id) {

@@ -105,10 +105,10 @@ static struct lookup_table description_table[]={
 };
 
 static struct lookup_table aspect_table[] = {
-	{0, "4/3"},   // 4/3  
-        {1, "16/9"},  // 16/9 WITH PAN VECTORS
-        {2, "16/9"},  // 16/9 WITHOUT
-	{3, "2.21/1"},  // >16/9 or 2.21/1 XMLTV no likey
+        {0, "4:3"},   // 4/3  
+        {1, "16:9"},  // 16/9 WITH PAN VECTORS
+        {2, "16:9"},  // 16/9 WITHOUT
+        {3, "2.21:1"},  // >16/9 or 2.21/1 XMLTV no likey
 	{-1, NULL }	
 };
 

@@ -1,3 +1,5 @@
+CFLAGS=-Wall -O2
+
 tv_grab_dvb:	tv_grab_dvb.o crc32.o lookup.o
 	gcc -o tv_grab_dvb tv_grab_dvb.o crc32.o lookup.o
 
