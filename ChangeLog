@@ -3,17 +3,15 @@
 ==========================================================================
 15/07/2004	Mark Bryars	 <dvbepg_darkskiez_co_uk>	0.8
 	* Added -m -n -p options for various now next selections
-	* Addes -s for no status output
+	* Added -s for no status output
 	* Added time offset function to manipulate the output dates
 	  Thanks to Andreas Witte <Andreaz_t-online_de> for the
 	  pestering emails and the german date patch which i modified.
-
 
 06/06/2005 	Nick Craig-Wood <nick_craig-wood_com>
 	* XMLIFY patch to output correct xml for all symbols
 	  (dont die on <'s or >'s)
 	 
-
 ==========================================================================
 		 tv_grab_dvb 0.6 Released 23/05/2004 
 ==========================================================================
