@@ -3,13 +3,22 @@
 
 
 
-Please Email me with [DVBEPG] in subject to filter out spam 
-- Copyright (C) 200 4 Mark Bryars <dvb at darkskiez d0t co d0t uk>
+Please Email me with [DVBEPG] in subject to filter out spam - Copyright (C) 200
+4 Mark Bryars <dvb at darkskiez d0t co d0t uk>
 
 DVB code Mercilessly ripped off from dvbdate
 
 NEWS
 ----
+
+23/05/2004 - Ver 0.6 Released
+
+  This consists mostly of a patch from Nick Craig-Wood to make output
+  more compliant with XML and the XMLTV dtd, with the correct tag
+  ordering, etc. Cheers!
+
+  View [1]ChangeLog For Detail
+
 
 08/05/2004 - Ver 0.5 Released
 
@@ -22,51 +31,41 @@ NEWS
   if you know what this should be. In the UK we seem to be getting
   a lot of 'f0' which I can't find out what they are meant to be.
   Eastenders seems to be categorised with it, but so does a range
-  of murder mystery things.
+  of murder mystery things.  Update:  It appears to be Drama
+  Let me know anything else please.
+
 
 
 CHANGES
 -------
-Version 0.5 - 08/05/2004
-- Fixed time output to be in local time.
-- Fixed decoding of UK 7/8 day epg
-- Bad date redefined to be before 24hrs ago and after 2 weeks from now
-- Documented option -d to parse bad date packets
-- Disabled default output of updates to stop duplicates
-  ( option -u to reenable output)
-- Improved memory management patch, thanks to Steve Davies
 
-Version 0.3 - 30/04/2004
-- Ignore bad dates in the output (if end time was before now, discard)
-- Added comprehensive event decoding info
-- Added aspect information
-- Added audio information
-- Still havent fixed the timezone thing.
-
-Version 0.2 - 20/04/2004
-- Initial Public Release
-
+[2]View ChangeLog
 
 
 DOWNLOAD
 --------
 
-[1]http://www.darkskiez.co.uk/tv_grab_dvb-0.5.tgz
+[3]http://www.darkskiez.co.uk/tv_grab_dvb-0.6.tgz
+
 
 REQUIREMENTS
 ------------
+
 * DVB Card Working in linux already, and tuned to a multiplex.
 
 USAGE
 -----
 
 It reads a channels.conf file tzap format in the current directory to decode th
-e channel names (at the moment). May not always need this.
+e channel names (at the moment)
+May not always need this.
 
 Tested with:
         UK Freeview Now/Next
         UK London 8 Day EPG test
-        Let me know!
+        Germany/Berlin DVB-T Now/Next
+        Sweden DVB-S
+        Let Me Know!
 
 Tune into a multiplex with whatever you like, dvbtune, mplayer, mythtv and run:
 
@@ -85,16 +84,13 @@ Works well for me to stop it messing about all the channels.
 TODO
 ----
 
+* use iconv to correctly output descriptions
 * Allow specifying path to channels.conf
 * Allow specifying the DVB card
 * Decode Subtitle info in XMLTV Style - 0.6 DTD?
 * Do proper XML encoding of text.
 * Decode Channel names from broadcast
 * Allow mapping to existing xmltv id.
-
-DONE
-----
-* Sort out timezone problems (Maybe)
 
 
 LICENSE
@@ -114,3 +110,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 Or, point your browser to http://www.gnu.org/copyleft/gpl.html
 
+References
+
+   1. http://www.darkskiez.co.uk/ChangeLog
+   2. http://www.darkskiez.co.uk/ChangeLog
+   3. http://www.darkskiez.co.uk/tv_grab_dvb-0.6.tgz
