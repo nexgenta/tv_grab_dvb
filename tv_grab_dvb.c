@@ -253,7 +253,7 @@ char *xmlify(unsigned char* s) {
 				r = add_string(r, "&quot;");
 				break;
 			default:
-				if (*s >= 20) {  // ignore control characters
+				if (*s >= 0x20) {  // ignore control characters
 					*r++=*s;
 				}
 				break;
