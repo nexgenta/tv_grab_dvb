@@ -55,6 +55,7 @@ static char *id="@(#) $Id$";
 
 /* FIXME: put these as options */
 #define CHANNELS_CONF "channels.conf"
+#define CHANIDENTS    "chanidents"
 #define DEMUX         "/dev/dvb/adapter0/demux0"
 
 char *ProgName;
@@ -68,6 +69,8 @@ int invalid_date_count = 0;
 
 bool ignore_bad_dates = true;
 bool ignore_updates = true;
+bool use_chanidents = false;
+bool now_next_only = false;
 
 typedef struct chninfo 
 {
@@ -91,9 +94,11 @@ void errmsg(char *message, ...)
 
 void usage()
 {
-	errmsg ("tv_grab_dvb - Version 0.5\n\n usage: %s [-d] [-u] [-t timeout] > dump.xmltv\n\n"
+	errmsg ("tv_grab_dvb - Version 0.61\n\n usage: %s [-d] [-u] [-c] [-t timeout] > dump.xmltv\n\n"
 		"\t\t-t timeout - Stop after timeout seconds of no new data\n"
+		"\t\t-c - Use Channel Identifiers from file 'chanidents' rather than sidnumber.dvb.guide\n"
 		"\t\t-d - output invalid dates\n"
+		"\t\t-n - now next info only\n"
 		"\t\t-u - output updated info - will result in repeated information\n\n", ProgName);
 	_exit(1);
 }
@@ -108,6 +113,7 @@ int do_options(int arg_count, char **arg_strings)
 	static struct option Long_Options[] = {
 		{"help", 0, 0, 'h'},
 		{"timeout", 1, 0, 't'},
+		{"chanidents", 1, 0, 'c'},
 		{0, 0, 0, 0}
 	};
 	int c;
@@ -131,6 +137,11 @@ int do_options(int arg_count, char **arg_strings)
 		case 'd':
 			ignore_bad_dates = false;
 			break;
+		case 'c':
+			use_chanidents = true;
+			break;
+		case 'n':
+			now_next_only = true;
 		case 'h':
 		case '?':
 			usage();
@@ -144,29 +155,79 @@ int do_options(int arg_count, char **arg_strings)
 	return 0;
 }
 
-/* 
- * This function is horrible horrible horrible
- * FIXME: fix more than & signs, do proper conversion
- * There must be a bit of code somewhere i can lift for this
+char *get_channelident(int chanid) {
+	static char returnstring[256];
+	FILE *fd_ci;
+	char buf2[256];
+	int chanmatch=0;
+	
+	if (use_chanidents)
+	{
+		fd_ci = fopen(CHANIDENTS, "r");
+		while (fgets(buf2,256,fd_ci) && !chanmatch)
+		{
+			sscanf(buf2,"%d %s",&chanmatch,returnstring);
+			if (chanmatch != chanid) chanmatch = 0;
+		}
+		fclose(fd_ci);
+	}
+	if (!chanmatch)
+		sprintf(returnstring,"%d.dvb.guide",chanid);
+	return returnstring;
+}
+
+
+/* Add text to the end of string, returning a pointer to the end of string */
+/* Added by Nick Craig-Wood - nick craig-wood com */
+
+static char *add_string(char * string, const char *text) {
+	int len = strlen(text);
+	memcpy(string, text, len);
+	return string + len;
+}
+	
+
+
+/* Quote the xml entities in the string passed in.
+ * NB this is returned as a pointer to a string on the heap which will
+ * be re-used on the next call to xmlify()
+ * Patched by Nick Craig-Wood - nick craig-wood com for more chars with 
+ * add_string func for tidyness
  */
 
-char *xmlify(char* s) {
+char *xmlify(unsigned char* s) {
 	static char *xml=NULL;
 	static unsigned bufsz=0;
 	char *r;
-
+	int max_len = strlen(s) * 6 + 1; /* Max possible expansion of string n * &quot; + NULL */
+		                         /* A little untidy but fast! */
+	
 	/*  Patch by Steve Davies <steve one47 co uk> for better memory management */
-	if( bufsz < strlen(s)*2 || xml == NULL ) {
-		xml=realloc(xml, strlen(s)*2);
-		bufsz=strlen(s)*2;
+	if( bufsz < max_len || xml == NULL ) {
+		xml=realloc(xml, max_len);
+		bufsz=max_len;
 	}
 	
 	r=xml;
 	while ( *s != '\0' ) {
-		if (*s == '&') {
-			*r++='&';*r++='a';*r++='m';*r++='p';*r++=';';
-                } else if (*s >= 20) {  // ignore control characters
-			*r++=*s;
+		switch (*s) {
+			case '&':
+				r = add_string(r, "&amp;");
+				break;
+			case '<':
+				r = add_string(r, "&lt;");
+				break;
+			case '>':
+				r = add_string(r, "&gt;");
+				break;
+			case '"':
+				r = add_string(r, "&quot;");
+				break;
+			default:
+				if (*s >= 20) {  // ignore control characters
+					*r++=*s;
+				}
+				break;
 		}
 		s++;
 	}
@@ -440,7 +501,7 @@ void parseeit(char *eitbuf, int len)
 	
 		programme_count++;
 
-		printf("<programme channel=\"%i.dvb.guide\" ",HILO(e->service_id));   
+		printf("<programme channel=\"%s\"",get_channelident(HILO(e->service_id)));
 		strftime(date_strbuf, sizeof(date_strbuf), "start=\"%Y%m%d%H%M%S\"", localtime(&start_time) );  
 		printf("%s ",date_strbuf);
 		strftime(date_strbuf, sizeof(date_strbuf), "stop=\"%Y%m%d%H%M%S\"", localtime(&stop_time));  
@@ -498,7 +559,7 @@ int readEventTables(unsigned int to)
 	sctFilterParams.pid = 18; //EIT Data
 	sctFilterParams.timeout = 0;
 	sctFilterParams.flags = DMX_IMMEDIATE_START;
-        sctFilterParams.filter.filter[0] = 0x00; // 4e is now/next.
+        sctFilterParams.filter.filter[0] = now_next_only?0x4e:00; // 4e is now/next.
  	sctFilterParams.filter.mask[0] = 0x00;   // ?? 
 
 	if (ioctl(fd_epg, DMX_SET_FILTER, &sctFilterParams) < 0) {
@@ -574,7 +635,7 @@ void readZapInfo() {
 		if (id && chansep) {
 			*chansep='\0';
 			chanid=atoi(id);
-			printf("<channel id=\"%d.dvb.guide\">\n",chanid);
+			printf("<channel id=\"%s\">\n",get_channelident(chanid));
 			printf("\t<display-name>%s</display-name>\n",xmlify(buf));
 			printf("</channel>\n");
 		}
@@ -605,4 +666,6 @@ int main(int argc, char **argv)
 		exit(1);
 	}
    
-	return (0);}
+	return (0);
+
+}
