@@ -1,21 +1,57 @@
-CHANGES
--------
-Version 0.5 - 08/05/2004
-- Fixed time output to be in local time.
-- Fixed decoding of UK 7/8 day epg
-- Bad date redefined to be before 24hrs ago and after 2 weeks from now
-- Documented option -d to parse bad date packets
-- Disabled default output of updates to stop duplicates
-( option -u to reenable output)
-- Improved memory management patch, thanks to Steve Davies
-                                                                                                    
-Version 0.3 - 30/04/2004
-- Ignore bad dates in the output (if end time was before now, discard)
-- Added comprehensive event decoding info
-- Added aspect information
-- Added audio information
-- Still havent fixed the timezone thing.
-                                                                                                    
-Version 0.2 - 20/04/2004
-- Initial Public Release
+==========================================================================
+		 tv_grab_dvb 0.6 Released 23/05/2004 
+==========================================================================
+23/05/2004	Mark Bryars	<dvbepg@darkskiez_co_uk>	0.6
+	* Added -O2 -Wall to compilation, fixed warnings.
+	* Reformatted ChangeLog to try and make it the standard format
+
+21/05/2004	Nick Craig-Wood <nick@craig-wood_com>
+ 	* Identify XML as ISO-8859-1 (latin1) rather than UTF8.  Pound signs
+	   etc blow up the XML parser if you identify as UTF8
+	* Aspect ratios should have colons not slashes according to XMLTV
+	* Don't ever output control characters (some of these creep in the
+	  descriptions - CTRL-R in particular - don't know why! - and they
+	  confuse the XML parser)
+	* Don't output empty descriptions (saves a warning from XMLTV)
+	* Only output the first video or audio tag (XMLTV can't cope
+	  with more than one)
+	* Make sure all tags are output in the right order
+
+11/05/2004	 Mark Bryars     <dvbepg@darkskiez_co_uk>
+	* xmlify the channel name too, cheers Chris Birkinshaw for
+	  pointing out the DiscoveryH&L breakage.
+	* Added 'Drama' code for UK Freeview EPG content description.
+
+==========================================================================
+		 tv_grab_dvb 0.5 Released 08/05/2004 
+==========================================================================
+
+08/05/2004	Mark Bryars	<dvbepg@darkskiez_co_uk>	0.5
+	* Fixed time output to be in local time.
+	* Fixed decoding of UK 7/8 day epg
+	* Bad date redefined to be before 24hrs ago and after 2 weeks from now
+	* Documented option -d to parse bad date packets
+	* Disabled default output of updates to stop duplicates
+	( option -u to reenable output)
+
+07/05/2004	Steve Davies	<steve@one47_co_uk>		
+	* Improved memory management patch for xmlify routine
+
+==========================================================================
+		 tv_grab_dvb 0.3 Released 30/04/2004 
+==========================================================================
+	
+30/04/2004	Mark Bryars	<dvbepg@darkskiez_co_uk>	0.3
+	* Ignore bad dates in the output (if end time was before now, discard)
+	* Added comprehensive event decoding info
+	* Added aspect information
+	* Added audio information
+	* Still havent fixed the timezone thing.
+
+==========================================================================
+		 tv_grab_dvb 0.2 Released 20/04/2004 
+==========================================================================
+
+20/04/2004	Mark Bryars	<dvbepg@darkskiez_co_uk>	0.2
+	* tv_grab_dvb: Initial Public Release
 
