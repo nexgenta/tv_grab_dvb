@@ -1,0 +1,116 @@
+
+                   tv_grab_dvb - dump dvb epg info in xmltv
+
+
+
+Please Email me with [DVBEPG] in subject to filter out spam 
+- Copyright (C) 200 4 Mark Bryars <dvb at darkskiez d0t co d0t uk>
+
+DVB code Mercilessly ripped off from dvbdate
+
+NEWS
+----
+
+08/05/2004 - Ver 0.5 Released
+
+  First fairly usable release, with correct time information!
+  I've only had UK testers report back so far with this release
+  Thanks to Steve Davies and Mark Kendall for their helpful suggestions
+  and testing with the London 8 day EPG broadcast test.
+
+  If you are getting any Unknown ID:?? in your output, let me know
+  if you know what this should be. In the UK we seem to be getting
+  a lot of 'f0' which I can't find out what they are meant to be.
+  Eastenders seems to be categorised with it, but so does a range
+  of murder mystery things.
+
+
+CHANGES
+-------
+Version 0.5 - 08/05/2004
+- Fixed time output to be in local time.
+- Fixed decoding of UK 7/8 day epg
+- Bad date redefined to be before 24hrs ago and after 2 weeks from now
+- Documented option -d to parse bad date packets
+- Disabled default output of updates to stop duplicates
+  ( option -u to reenable output)
+- Improved memory management patch, thanks to Steve Davies
+
+Version 0.3 - 30/04/2004
+- Ignore bad dates in the output (if end time was before now, discard)
+- Added comprehensive event decoding info
+- Added aspect information
+- Added audio information
+- Still havent fixed the timezone thing.
+
+Version 0.2 - 20/04/2004
+- Initial Public Release
+
+
+
+DOWNLOAD
+--------
+
+[1]http://www.darkskiez.co.uk/tv_grab_dvb-0.5.tgz
+
+REQUIREMENTS
+------------
+* DVB Card Working in linux already, and tuned to a multiplex.
+
+USAGE
+-----
+
+It reads a channels.conf file tzap format in the current directory to decode th
+e channel names (at the moment). May not always need this.
+
+Tested with:
+        UK Freeview Now/Next
+        UK London 8 Day EPG test
+        Let me know!
+
+Tune into a multiplex with whatever you like, dvbtune, mplayer, mythtv and run:
+
+tv_grab_dvb [-t timeout] > whatson.xml
+
+HINTS
+-----
+
+Mythtv:
+
+tv_grab_dvb|mythfilldatabase --no-delete --file 1 0 -
+
+Works well for me to stop it messing about all the channels.
+
+
+TODO
+----
+
+* Allow specifying path to channels.conf
+* Allow specifying the DVB card
+* Decode Subtitle info in XMLTV Style - 0.6 DTD?
+* Do proper XML encoding of text.
+* Decode Channel names from broadcast
+* Allow mapping to existing xmltv id.
+
+DONE
+----
+* Sort out timezone problems (Maybe)
+
+
+LICENSE
+-------
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Or, point your browser to http://www.gnu.org/copyleft/gpl.html
+
