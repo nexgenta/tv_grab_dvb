@@ -47,6 +47,8 @@ Or, point your browser to http://www.gnu.org/copyleft/gpl.html
 #include <linux/dvb/dmx.h>
 #include "si_tables.h"
 #include "dvb_info_tables.h"
+#include "crc32.h"
+
 #define bcdtoint(i) ((((i & 0xf0) >> 4) * 10) + (i & 0x0f))
 
 /* FIXME: put these as options */
@@ -149,7 +151,6 @@ int do_options(int arg_count, char **arg_strings)
 char *xmlify(char* s) {
 	static char *xml=NULL;
 	static unsigned bufsz=0;
-	int i;
 	char *r;
 
 	/*  Patch by Steve Davies <steve one47 co uk> for better memory management */
@@ -171,7 +172,7 @@ char *xmlify(char* s) {
 	return xml;
 }
 
-int parseEventDescription(char *evtdesc) 
+void parseEventDescription(char *evtdesc) 
 {
    int evtlen,dsclen;
    char lang[3];
@@ -198,7 +199,7 @@ int parseEventDescription(char *evtdesc)
    only output the first one of each (XMLTV can't cope with more than
    one) */
 
-int parseComponentDescription(descr_component_t *dc, int video, int *seen)
+void parseComponentDescription(descr_component_t *dc, int video, int *seen)
 {
 	char buf[256];
 	char lang[3];
@@ -220,7 +221,7 @@ int parseComponentDescription(descr_component_t *dc, int video, int *seen)
                         //if ((dc->component_type-1)&&0x08) //HD TV
                         //if ((dc->component_type-1)&&0x04) //30Hz else 25
                         printf("\t<video>\n");
-                        printf("\t\t<aspect>%s</aspect>\n",lookup(&aspect_table,(dc->component_type-1)&&0x03));
+                        printf("\t\t<aspect>%s</aspect>\n",lookup((struct lookup_table*)&aspect_table,(dc->component_type-1)&&0x03));
                         printf("\t</video>\n");
                         (*seen)++;
                         break;
@@ -229,7 +230,7 @@ int parseComponentDescription(descr_component_t *dc, int video, int *seen)
                   if (!video && !*seen)
                     {
 			printf("\t<audio>\n");
-			printf("\t\t<stereo>%s</stereo>\n",lookup(&audio_table,(dc->component_type)));
+			printf("\t\t<stereo>%s</stereo>\n",lookup((struct lookup_table*)&audio_table,(dc->component_type)));
 			printf("\t</audio>\n");
                         (*seen)++;
 			break;;
@@ -255,18 +256,18 @@ int parseComponentDescription(descr_component_t *dc, int video, int *seen)
 }
 
 
-int parseContentDescription(descr_content_t *dc) 
+void parseContentDescription(descr_content_t *dc) 
 {
 	int c1,c2;
 	int i;   
 	for (i=0;i<(dc->descriptor_length);i+=2) 
 	{                      
 		nibble_content_t *nc=CastContentNibble((char*)dc+DESCR_CONTENT_LEN+i);
-		c1=(nc->content_nibble_level_1<<4+nc->content_nibble_level_2);
-		c2=(nc->user_nibble_1<<4+nc->user_nibble_2);
-		if (c1>0) printf("\t<category>%s</category>\n",lookup(&description_table,c1));
+		c1=((nc->content_nibble_level_1<<4)+(nc->content_nibble_level_2));
+		c2=((nc->user_nibble_1<<4)+(nc->user_nibble_2));
+		if (c1>0) printf("\t<category>%s</category>\n",lookup((struct lookup_table*)&description_table,c1));
 		// This is weird in the uk, they use user but not content, and almost the same values
-		if (c2>0) printf("\t<category>%s</category>\n",lookup(&description_table,c2));		
+		if (c2>0) printf("\t<category>%s</category>\n",lookup((struct lookup_table*)&description_table,c2));		
 	}
 }
 
@@ -299,7 +300,7 @@ Tags should be output in this order
 'star-rating'
 */
 
-int parseDescription(char *desc,int len) 
+void parseDescription(char *desc,int len) 
 {
    int i,round,tag,taglen,seen;
    for (round=0;round<4;round++)
@@ -344,7 +345,7 @@ int parseDescription(char *desc,int len)
      }
 }
   
-int parseeit(char *eitbuf, int len) 
+void parseeit(char *eitbuf, int len) 
 {
 	char        desc[4096];
 	long int    mjd;
@@ -558,7 +559,7 @@ int readEventTables(unsigned int to)
 	 * 
 	 * (The dvb demultiplexer seems to simply output this in individual whole packets)
 	 */
-	while (n = read(fd_epg, buf, 4096)) 
+	while ((n = read(fd_epg, buf, 4096)))
  	{
 		if (buf[0]==0)
 			continue;
