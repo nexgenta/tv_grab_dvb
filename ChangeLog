@@ -1,4 +1,16 @@
 ==========================================================================
+		 tv_grab_dvb 0.9 Released 07/09/2004 
+==========================================================================
+26/08/2004	Jon Dye		<jon_pecorous_co_uk>		0.9
+	* Fixed Stupid 20 vs 0x20 typo - I'm sure that was there before..
+	* Updated chanids with a load more.
+	* Supplied a UK subtitle info patch, char based see patches/
+
+20/08/2004	John Pullan	<jmp_tarantella_com>
+	* Supplied a UK subtitle info patch, % based see patches/
+
+
+==========================================================================
 		 tv_grab_dvb 0.8 Released 15/07/2004 
 ==========================================================================
 15/07/2004	Mark Bryars	 <dvbepg_darkskiez_co_uk>	0.8

@@ -96,7 +96,7 @@ void errmsg(char *message, ...)
 
 void usage()
 {
-	errmsg ("tv_grab_dvb - Version 0.8\n\n usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] > dump.xmltv\n\n"
+	errmsg ("tv_grab_dvb - Version 0.9\n\n usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] > dump.xmltv\n\n"
 		"\t\t-t timeout - Stop after timeout seconds of no new data\n"
 		"\t\t-o offset  - time offset in hours from -12 to 12\n"
 		"\t\t-c - Use Channel Identifiers from file 'chanidents'\n"
