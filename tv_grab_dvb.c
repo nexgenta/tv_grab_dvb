@@ -65,12 +65,14 @@ int packet_count = 0;
 int programme_count = 0;
 int update_count  = 0;
 int crcerr_count  = 0;
+int time_offset   = 0;
 int invalid_date_count = 0;
-
+int chan_filter	     = 0;
+int chan_filter_mask = 0;
 bool ignore_bad_dates = true;
 bool ignore_updates = true;
 bool use_chanidents = false;
-bool now_next_only = false;
+bool silent = false;
 
 typedef struct chninfo 
 {
@@ -94,18 +96,25 @@ void errmsg(char *message, ...)
 
 void usage()
 {
-	errmsg ("tv_grab_dvb - Version 0.61\n\n usage: %s [-d] [-u] [-c] [-t timeout] > dump.xmltv\n\n"
+	errmsg ("tv_grab_dvb - Version 0.8\n\n usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] > dump.xmltv\n\n"
 		"\t\t-t timeout - Stop after timeout seconds of no new data\n"
-		"\t\t-c - Use Channel Identifiers from file 'chanidents' rather than sidnumber.dvb.guide\n"
+		"\t\t-o offset  - time offset in hours from -12 to 12\n"
+		"\t\t-c - Use Channel Identifiers from file 'chanidents'\n"
+		"\t\t     (rather than sidnumber.dvb.guide)\n"
 		"\t\t-d - output invalid dates\n"
 		"\t\t-n - now next info only\n"
+		"\t\t-m - current multiplex now_next only\n"
+		"\t\t-p - other multiplex now_next only\n"
+		"\t\t-s - silent - no status ouput\n"
 		"\t\t-u - output updated info - will result in repeated information\n\n", ProgName);
 	_exit(1);
 }
 
 void status() {
-	errmsg ("\r Status: %d pkts, %d prgms, %d updates, %d invalid, %d CRC err",
-			packet_count,programme_count,update_count,invalid_date_count,crcerr_count);
+	if (!silent) {
+		errmsg ("\r Status: %d pkts, %d prgms, %d updates, %d invalid, %d CRC err",
+				packet_count,programme_count,update_count,invalid_date_count,crcerr_count);
+	}
 }
 
 int do_options(int arg_count, char **arg_strings)
@@ -120,14 +129,21 @@ int do_options(int arg_count, char **arg_strings)
 	int Option_Index = 0;
 
 	while (1) {
-		c = getopt_long(arg_count, arg_strings, "duht:", Long_Options, &Option_Index);
+		c = getopt_long(arg_count, arg_strings, "udscmpnht:o:", Long_Options, &Option_Index);
 		if (c == EOF)
 			break;
 		switch (c) {
 		case 't':
 			timeout = atoi(optarg);
 			if (0 == timeout) {
-				errmsg("%s: invalid timeout value\n", ProgName);
+				errmsg("%s: Invalid timeout value\n", ProgName);
+				usage();
+			}
+			break;
+		case 'o':
+			time_offset = atoi(optarg);
+			if ((time_offset < -12) || (time_offset > 12)) {
+				errmsg("%s: Invalid time offset", ProgName);
 				usage();
 			}
 			break;
@@ -141,7 +157,20 @@ int do_options(int arg_count, char **arg_strings)
 			use_chanidents = true;
 			break;
 		case 'n':
-			now_next_only = true;
+			chan_filter=0x4e;
+			chan_filter_mask=0xfe;
+			break;
+		case 'm':
+			chan_filter=0x4e;
+			chan_filter_mask=0xff;
+			break;
+		case 'p':
+			chan_filter=0x4f;
+			chan_filter_mask=0xff;
+			break;
+		case 's':
+			silent = true;
+			break;
 		case 'h':
 		case '?':
 			usage();
@@ -347,46 +376,50 @@ Tags should be output in this order
 
 void parseDescription(char *desc,int len) 
 {
-   int i,round,tag,taglen,seen;
-   for (round=0;round<4;round++)
-     {
-       seen=0;                        // no video/audio seen in this round
-       for (i=0;i<len;)
-         {
-		
-           tag=*(desc+i) &0xff;
-           taglen=*(desc+i+1) &0xff;
-           if (taglen>0)
-             {
-               switch (tag)
-                 {
-                 case 0:
-                   break;;
-                 case 0x4D: //short evt desc, [title] [desc]
-		   if (round == 0)
-			   parseEventDescription(desc+i);
-                   break;;
-                 case 0x50: //component desc [video] [audio]
-                   if (round == 2)
-			   parseComponentDescription(CastComponentDescriptor(desc+i), 1, &seen);
-                   else if (round == 3)
-			   parseComponentDescription(CastComponentDescriptor(desc+i), 0, &seen);
-                   break;;
-                 case 0x54: //content desc [category]
-                   if (round == 1)
-			   parseContentDescription(CastContentDescriptor(desc+i));
-		   break;;
-                 case 0x64: //Data broadcast desc - Text Desc for Data components
-                   break;;
-                 default:
-                   if (round == 0)
-			   printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n",tag,taglen);
-                 }
-             }
-          
-           i=i+taglen+2;
-         }
-     }
+	int i,round,tag,taglen,seen;
+	for (round=0;round<4;round++)
+	{
+		seen=0;                        // no video/audio seen in this round
+		for (i=0;i<len;)
+		{
+			
+			tag=*(desc+i) &0xff;
+			taglen=*(desc+i+1) &0xff;
+			if (taglen>0)
+			{
+				switch (tag)
+				{
+					case 0:
+						break;;
+					case 0x4D: //short evt desc, [title] [desc]
+						if (round == 0)
+							parseEventDescription(desc+i);
+						break;;
+					case 0x4E: //long evt descriptor
+						if (round == 0)
+							printf("\t<!-- Long Event Info Detected - Bug Author to decode -->\n");
+						break;;
+					case 0x50: //component desc [video] [audio]
+						if (round == 2)
+							parseComponentDescription(CastComponentDescriptor(desc+i), 1, &seen);
+						else if (round == 3)
+							parseComponentDescription(CastComponentDescriptor(desc+i), 0, &seen);
+						break;;
+					case 0x54: //content desc [category]
+						if (round == 1)
+							parseContentDescription(CastContentDescriptor(desc+i));
+						break;;
+					case 0x64: //Data broadcast desc - Text Desc for Data components
+						break;;
+					default:
+						if (round == 0)
+							printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n",tag,taglen);
+				}
+			}
+			
+			i=i+taglen+2;
+		}
+	}
 }
   
 void parseeit(char *eitbuf, int len) 
@@ -475,7 +508,7 @@ void parseeit(char *eitbuf, int len)
 	
 		dvb_time.tm_sec =  bcdtoint(evt->start_time_s);
 		dvb_time.tm_min =  bcdtoint(evt->start_time_m);
-		dvb_time.tm_hour = bcdtoint(evt->start_time_h);
+		dvb_time.tm_hour = bcdtoint(evt->start_time_h) + time_offset;
 		start_time=mktime(&dvb_time);
    
 		dvb_time.tm_sec  += bcdtoint(evt->duration_s);
@@ -501,11 +534,11 @@ void parseeit(char *eitbuf, int len)
 	
 		programme_count++;
 
-		printf("<programme channel=\"%s\"",get_channelident(HILO(e->service_id)));
+		printf("<programme channel=\"%s\" ",get_channelident(HILO(e->service_id)));
 		strftime(date_strbuf, sizeof(date_strbuf), "start=\"%Y%m%d%H%M%S\"", localtime(&start_time) );  
 		printf("%s ",date_strbuf);
 		strftime(date_strbuf, sizeof(date_strbuf), "stop=\"%Y%m%d%H%M%S\"", localtime(&stop_time));  
-		printf("%s >\n ",date_strbuf);
+		printf("%s>\n ",date_strbuf);
 		
 		//printf("\t<EventID>%i</EventID>\n",HILO(evt->event_id));
 		//printf("\t<RunningStatus>%i</RunningStatus>\n",evt->running_status); 
@@ -559,8 +592,8 @@ int readEventTables(unsigned int to)
 	sctFilterParams.pid = 18; //EIT Data
 	sctFilterParams.timeout = 0;
 	sctFilterParams.flags = DMX_IMMEDIATE_START;
-        sctFilterParams.filter.filter[0] = now_next_only?0x4e:00; // 4e is now/next.
- 	sctFilterParams.filter.mask[0] = 0x00;   // ?? 
+        sctFilterParams.filter.filter[0] = chan_filter; // 4e is now/next this multiplex, 4f others
+ 	sctFilterParams.filter.mask[0] = chan_filter_mask;  
 
 	if (ioctl(fd_epg, DMX_SET_FILTER, &sctFilterParams) < 0) {
 		perror("DMX_SET_FILTER:");
