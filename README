@@ -3,14 +3,22 @@
 
 
 
-Please Email me with [DVBEPG] in subject to filter out spam - Copyright (C) 200
-4 Mark Bryars <dvb at darkskiez d0t co d0t uk>
+Please Email me with [DVBEPG] in subject to filter out spam 
+- Copyright (C) 2004 Mark Bryars <dvb at darkskiez d0t co d0t uk>
 
 DVB code Mercilessly ripped off from dvbdate
 
 NEWS
 ----
+15/07/2004 - Ver 0.8 Released
 
+  Restrict to now next options added for current/other multiplexes.
+  Status info is disablablable for more silent operation
+  Time Offset chan be changed by an option now
+  A Patch by Nick again for channel ident rewriting for interoperation
+  with other xmltv sources..
+  
+  
 23/05/2004 - Ver 0.6 Released
 
   This consists mostly of a patch from Nick Craig-Wood to make output
@@ -88,10 +96,14 @@ TODO
 * Allow specifying path to channels.conf
 * Allow specifying the DVB card
 * Decode Subtitle info in XMLTV Style - 0.6 DTD?
-* Do proper XML encoding of text.
 * Decode Channel names from broadcast
-* Allow mapping to existing xmltv id.
 
+DONE
+---
+
+* Do proper XML encoding of text. - nearly
+* Allow mapping to existing xmltv id. - thanks nick
++ more
 
 LICENSE
 -------
@@ -110,8 +122,3 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 Or, point your browser to http://www.gnu.org/copyleft/gpl.html
 
-References
-
-   1. http://www.darkskiez.co.uk/ChangeLog
-   2. http://www.darkskiez.co.uk/ChangeLog
-   3. http://www.darkskiez.co.uk/tv_grab_dvb-0.6.tgz
