@@ -220,10 +220,10 @@ void parseComponentDescription(descr_component_t *dc, int video, int *seen)
 		case 0x01: // Video Info
                   if (video && !*seen)
                     {
-                        //if ((dc->component_type-1)&&0x08) //HD TV
-                        //if ((dc->component_type-1)&&0x04) //30Hz else 25
+                        //if ((dc->component_type-1)&0x08) //HD TV
+                        //if ((dc->component_type-1)&0x04) //30Hz else 25
                         printf("\t<video>\n");
-                        printf("\t\t<aspect>%s</aspect>\n",lookup((struct lookup_table*)&aspect_table,(dc->component_type-1)&&0x03));
+                        printf("\t\t<aspect>%s</aspect>\n",lookup((struct lookup_table*)&aspect_table,(dc->component_type-1)&0x03));
                         printf("\t</video>\n");
                         (*seen)++;
                         break;
@@ -239,8 +239,8 @@ void parseComponentDescription(descr_component_t *dc, int video, int *seen)
                     }
 		case 0x03: // Teletext Info
 			// FIXME: is there a suitable XMLTV output for this?
-			// if ((dc->component_type)&&0x10) //subtitles
-			// if ((dc->component_type)&&0x20) //subtitles for hard of hearing
+			// if ((dc->component_type)&0x10) //subtitles
+			// if ((dc->component_type)&0x20) //subtitles for hard of hearing
 			// + other aspect nonsense
 			break;;
 		// case 0x04: // AC3 info
