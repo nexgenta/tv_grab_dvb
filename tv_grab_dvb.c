@@ -76,35 +76,27 @@ typedef struct chninfo {
 
 static struct chninfo *channels;
 
-static void errmsg(char *message, ...) {
-	va_list ap;
-
-	va_start(ap, message);
-	fprintf(stderr, "%s: ", ProgName);
-	vfprintf(stderr, message, ap);
-	va_end(ap);
-}
-
 /* Print usage information. {{{ */
 static void usage() {
-	errmsg ("tv_grab_dvb - Version 0.9\n\n usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] > dump.xmltv\n\n"
-		"\t\t-t timeout - Stop after timeout seconds of no new data\n"
-		"\t\t-o offset  - time offset in hours from -12 to 12\n"
-		"\t\t-c - Use Channel Identifiers from file 'chanidents'\n"
-		"\t\t     (rather than sidnumber.dvb.guide)\n"
-		"\t\t-d - output invalid dates\n"
-		"\t\t-n - now next info only\n"
-		"\t\t-m - current multiplex now_next only\n"
-		"\t\t-p - other multiplex now_next only\n"
-		"\t\t-s - silent - no status ouput\n"
-		"\t\t-u - output updated info - will result in repeated information\n\n", ProgName);
+	fprintf(stderr, "Usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] > dump.xmltv\n\n"
+		"\t-t timeout - Stop after timeout seconds of no new data\n"
+		"\t-o offset  - time offset in hours from -12 to 12\n"
+		"\t-c - Use Channel Identifiers from file 'chanidents'\n"
+		"\t     (rather than sidnumber.dvb.guide)\n"
+		"\t-d - output invalid dates\n"
+		"\t-n - now next info only\n"
+		"\t-m - current multiplex now_next only\n"
+		"\t-p - other multiplex now_next only\n"
+		"\t-s - silent - no status ouput\n"
+		"\t-u - output updated info - will result in repeated information\n"
+		"\n", ProgName);
 	_exit(1);
 } /*}}}*/
 
 /* Print progress indicator. {{{ */
 static void status() {
 	if (!silent) {
-		errmsg ("\r Status: %d pkts, %d prgms, %d updates, %d invalid, %d CRC err",
+		fprintf(stderr, "\r Status: %d pkts, %d prgms, %d updates, %d invalid, %d CRC err",
 				packet_count, programme_count, update_count, invalid_date_count, crcerr_count);
 	}
 } /*}}}*/
@@ -128,14 +120,14 @@ static int do_options(int arg_count, char **arg_strings) {
 		case 't':
 			timeout = atoi(optarg);
 			if (0 == timeout) {
-				errmsg("%s: Invalid timeout value\n", ProgName);
+				fprintf(stderr, "%s: Invalid timeout value\n", ProgName);
 				usage();
 			}
 			break;
 		case 'o':
 			time_offset = atoi(optarg);
 			if ((time_offset < -12) || (time_offset > 12)) {
-				errmsg("%s: Invalid time offset", ProgName);
+				fprintf(stderr, "%s: Invalid time offset", ProgName);
 				usage();
 			}
 			break;
@@ -169,7 +161,7 @@ static int do_options(int arg_count, char **arg_strings) {
 			break;
 		case 0:
 		default:
-			errmsg("%s: unknown getopt error - returned code %02x\n", ProgName, c);
+			fprintf(stderr, "%s: unknown getopt error - returned code %02x\n", ProgName, c);
 			_exit(1);
 		}
 	}
@@ -342,11 +334,28 @@ static void parseDescription(char *desc, int len) {
 	}
 } /*}}}*/
 
+/* Use the routine specified in ETSI EN 300 468 V1.4.1, {{{
+ * "Specification for Service Information in Digital Video Broadcasting"
+ * to convert from Modified Julian Date to Year, Month, Day. */
+static void parseMJD(long int mjd, struct tm *t) {
+	int year = (int) ((mjd - 15078.2) / 365.25);
+	int month = (int) ((mjd - 14956.1 - (int) (year * 365.25)) / 30.6001);
+	int day = mjd - 14956 - (int) (year * 365.25) - (int) (month * 30.6001);
+	int i = (month == 14 || month == 15) ? 1 : 0;
+	year += i ;
+	month = month - 2 - i * 12;
+
+	t->tm_mday = day;
+	t->tm_mon = month;
+	t->tm_year = year;
+	t->tm_isdst = -1;
+	t->tm_wday = t->tm_yday = 0;
+} /*}}}*/
+
 /* Parse Event Information Table. {{{ */
 static void parseeit(char *eitbuf, int len) {
 	char        desc[4096];
-	long int    mjd;
-	int         year, month, day, i, dll, j;
+	int         dll, j;
 	eit_t       *e = (eit_t *)eitbuf;
 	eit_event_t *evt = (eit_event_t *)(eitbuf + EIT_LEN);
 	chninfo_t   *c = channels;
@@ -397,39 +406,17 @@ static void parseeit(char *eitbuf, int len) {
 		/* we have more data, refresh alarm */
 		alarm(timeout);
 
-		// FIXME: move this into seperate function.
-
-		mjd = HILO(evt->mjd);
-		/*
-		 *  * Use the routine specified in ETSI EN 300 468 V1.4.1,
-		 *  * "Specification for Service Information in Digital Video Broadcasting"
-		 *  * to convert from Modified Julian Date to Year, Month, Day.
-		 *  */
-		year = (int) ((mjd - 15078.2) / 365.25);
-		month = (int) ((mjd - 14956.1 - (int) (year * 365.25)) / 30.6001);
-		day = mjd - 14956 - (int) (year * 365.25) - (int) (month * 30.6001);
-		if (month == 14 || month == 15)
-			i = 1;
-		else
-			i = 0;
-		year += i ;
-		month = month - 2 - i * 12;
-
-		dvb_time.tm_mday = day;
-		dvb_time.tm_mon = month;
-		dvb_time.tm_year = year;
-		dvb_time.tm_isdst = 0;
-		dvb_time.tm_wday = dvb_time.tm_yday = 0;
+		parseMJD(HILO(evt->mjd), &dvb_time);
 
 		dvb_time.tm_sec =  BcdCharToInt(evt->start_time_s);
 		dvb_time.tm_min =  BcdCharToInt(evt->start_time_m);
 		dvb_time.tm_hour = BcdCharToInt(evt->start_time_h) + time_offset;
-		start_time = mktime(&dvb_time);
+		start_time = timegm(&dvb_time);
 
 		dvb_time.tm_sec  += BcdCharToInt(evt->duration_s);
 		dvb_time.tm_min  += BcdCharToInt(evt->duration_m);
 		dvb_time.tm_hour += BcdCharToInt(evt->duration_h);
-		stop_time = mktime(&dvb_time);
+		stop_time = timegm(&dvb_time);
 
 		// length of message at end.
 		dll = HILO(evt->descriptors_loop_length);
@@ -449,9 +436,9 @@ static void parseeit(char *eitbuf, int len) {
 		programme_count++;
 
 		printf("<programme channel=\"%s\" ", get_channelident(HILO(e->service_id)));
-		strftime(date_strbuf, sizeof(date_strbuf), "start=\"%Y%m%d%H%M%S\"", localtime(&start_time) );
+		strftime(date_strbuf, sizeof(date_strbuf), "start=\"%Y%m%d%H%M%S %z\"", localtime(&start_time) );
 		printf("%s ", date_strbuf);
-		strftime(date_strbuf, sizeof(date_strbuf), "stop=\"%Y%m%d%H%M%S\"", localtime(&stop_time));
+		strftime(date_strbuf, sizeof(date_strbuf), "stop=\"%Y%m%d%H%M%S %z\"", localtime(&stop_time));
 		printf("%s>\n ", date_strbuf);
 
 		//printf("\t<EventID>%i</EventID>\n", HILO(evt->event_id));
@@ -533,13 +520,13 @@ static int readEventTables(unsigned int to) {
 			found = 1;
 			break;
 		}
-		errmsg("error polling for data");
+		fprintf(stderr, "error polling for data");
 		close(fd_epg);
 		return -1;
 	}
 	fprintf(stdout, "\n");
 	if (0 == found) {
-		errmsg("timeout - try tuning to a multiplex?\n");
+		fprintf(stderr, "timeout - try tuning to a multiplex?\n");
 		close(fd_epg);
 		return -1;
 	}
@@ -562,15 +549,16 @@ static int readEventTables(unsigned int to) {
 	close(fd_epg);
 	finish_up();
 	return 0;
-}
+} /*}}}*/
 
-void readZapInfo() {
+/* Read [cst]zap channels.conf file and print as XMLTV channel info. {{{ */
+static void readZapInfo() {
 	FILE *fd_zap;
 	char buf[256];
 	char *chansep, *id;
 	int chanid;
 	if ((fd_zap = fopen(CHANNELS_CONF, "r")) == NULL) {
-		errmsg("No tzap channels.conf to produce channel info");
+		fprintf(stderr, "No tzap channels.conf to produce channel info");
 		return;
 	}
 
@@ -587,15 +575,13 @@ void readZapInfo() {
 	}
 
 	fclose(fd_zap);
-}
+} /*}}}*/
 
 /* Main function. {{{ */
 int main(int argc, char **argv) {
 	int ret;
 	ProgName = argv[0];
-/*
- * Process command line arguments
- */
+	/* Process command line arguments */
 	do_options(argc, argv);
 	fprintf(stderr, "\n");
 	printf("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n");
@@ -606,7 +592,7 @@ int main(int argc, char **argv) {
 	alarm(timeout);
 	ret = readEventTables(timeout);
 	if (ret != 0) {
-		errmsg("Unable to get event data from multiplex.\n");
+		fprintf(stderr, "Unable to get event data from multiplex.\n");
 		exit(1);
 	}
 
