@@ -78,7 +78,8 @@ static struct chninfo *channels;
 
 /* Print usage information. {{{ */
 static void usage() {
-	fprintf(stderr, "Usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] -f file | > dump.xmltv\n\n"
+	fprintf(stderr, "Usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] [-i file] -f file | > dump.xmltv\n\n"
+		"\t-i file - Read from file/device instead of %s\n"
 		"\t-f file - Write output to file instead of stdout\n"
 		"\t-t timeout - Stop after timeout seconds of no new data\n"
 		"\t-o offset  - time offset in hours from -12 to 12\n"
@@ -90,7 +91,7 @@ static void usage() {
 		"\t-p - other multiplex now_next only\n"
 		"\t-s - silent - no status ouput\n"
 		"\t-u - output updated info - will result in repeated information\n"
-		"\n", ProgName);
+		"\n", ProgName, demux);
 	_exit(1);
 } /*}}}*/
 
@@ -110,15 +111,17 @@ static int do_options(int arg_count, char **arg_strings) {
 		{"chanidents", 1, 0, 'c'},
 		{0, 0, 0, 0}
 	};
-	int c;
 	int Option_Index = 0;
 	int fd;
 
 	while (1) {
-		c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:", Long_Options, &Option_Index);
+		int c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:i:", Long_Options, &Option_Index);
 		if (c == EOF)
 			break;
 		switch (c) {
+		case 'i':
+			demux = strcmp(optarg, "-") ? optarg : NULL;
+			break;
 		case 'f':
 			if ((fd = open(optarg, O_CREAT | O_TRUNC | O_WRONLY, 0666)) < 0) {
 				fprintf(stderr, "%s: Can't write file %s\n", ProgName, optarg);
@@ -363,7 +366,7 @@ static void parseMJD(long int mjd, struct tm *t) {
 } /*}}}*/
 
 /* Parse Event Information Table. {{{ */
-static void parseeit(char *eitbuf, int len) {
+static void parseEIT(char *eitbuf, int len) {
 	char        desc[4096];
 	int         dll, j;
 	eit_t       *e = (eit_t *)eitbuf;
@@ -414,7 +417,11 @@ static void parseeit(char *eitbuf, int len) {
 
 		status();
 		/* we have more data, refresh alarm */
-		alarm(timeout);
+		if (timeout) alarm(timeout);
+
+		// No program info at end! Just skip it
+		if (GetEITDescriptorsLoopLength(evt) == 0)
+			return;
 
 		parseMJD(HILO(evt->mjd), &dvb_time);
 
@@ -427,12 +434,6 @@ static void parseeit(char *eitbuf, int len) {
 		dvb_time.tm_min  += BcdCharToInt(evt->duration_m);
 		dvb_time.tm_hour += BcdCharToInt(evt->duration_h);
 		stop_time = timegm(&dvb_time);
-
-		// length of message at end.
-		dll = HILO(evt->descriptors_loop_length);
-		// No program info! Just skip it
-		if (dll == 0)
-			return;
 
 		time(&now);
 		// basic bad date check. if the program ends before this time yesterday, or two weeks from today, forget it.
@@ -477,87 +478,118 @@ static void finish_up() {
 } /*}}}*/
 
 /* Read EIT segments from DVB-demuxer or file. {{{ */
-static int readEventTables(unsigned int to) {
-	int fd_epg, fd_time;
-	int n;
-	time_t t;
-	unsigned char buf[4096];
-	struct dmx_sct_filter_params sctFilterParams;
-	struct pollfd ufd;
-	int found = 0;
+static void readEventTables(void) {
+	int r, n = 0;
+	char buf[1<<12], *bhead = buf;
 
-	t = 0;
+	/* The dvb demultiplexer simply outputs individual whole packets (good),
+	 * but reading captured data from a file needs re-chunking. (bad). */
+	do {
+		if (n < sizeof(struct si_tab))
+			goto read_more;
+		struct si_tab *tab = (struct si_tab *)bhead;
+		if (GetTableId(tab) == 0)
+			goto read_more;
+		size_t l = sizeof(struct si_tab) + GetSectionLength(tab);
+		if (n < l)
+			goto read_more;
+		packet_count++;
+		if (_dvb_crc32((uint8_t *)bhead, l) != 0) {
+			/* data or length is wrong. skip bytewise. */
+			//l = 1; // FIXME
+			crcerr_count++;
+		} else {
+			parseEIT(bhead, l);
+		}
+		status();
+		/* remove packet */
+		n -= l;
+		bhead += l;
+		continue;
+read_more:
+		/* move remaining data to front of buffer */
+		if (n > 0)
+			memmove(buf, bhead, n);
+		/* fill with fresh data */
+		r = read(STDIN_FILENO, buf+n, sizeof(buf)-n);
+		bhead = buf;
+		n += r;
+	} while (r > 0);
+} /*}}}*/
 
-	//FIXME - no hardcoded device
+/* Setup demuxer or open file as STDIN. {{{ */
+static int openInput(void) {
+	int fd_epg, to;
+	struct stat stat_buf;
+
+	if (demux == NULL)
+		return 0; // Read from STDIN, which is open al
+
 	if ((fd_epg = open(demux, O_RDWR)) < 0) {
 		perror("fd_epg DEVICE: ");
 		return -1;
 	}
 
-	if ((fd_time = open(demux, O_RDWR)) < 0) {
-		perror("fd_time DEVICE: ");
+	if (fstat(fd_epg, &stat_buf) < 0) {
+		perror("fd_epg DEVICE: ");
 		return -1;
 	}
+	if (S_ISCHR(stat_buf.st_mode)) {
+		bool found = false;
+		struct dmx_sct_filter_params sctFilterParams = {
+			.pid = 18, // EIT data
+			.timeout = 0,
+			.flags =  DMX_IMMEDIATE_START,
+			.filter = {
+				.filter[0] = chan_filter, // 4e is now/next this multiplex, 4f others
+				.mask[0] = chan_filter_mask,
+			},
+		};
 
-	memset(&sctFilterParams, 0, sizeof(sctFilterParams));
-	sctFilterParams.pid = 18; //EIT Data
-	sctFilterParams.timeout = 0;
-	sctFilterParams.flags = DMX_IMMEDIATE_START;
-	sctFilterParams.filter.filter[0] = chan_filter; // 4e is now/next this multiplex, 4f others
-	sctFilterParams.filter.mask[0] = chan_filter_mask;
-
-	if (ioctl(fd_epg, DMX_SET_FILTER, &sctFilterParams) < 0) {
-		perror("DMX_SET_FILTER:");
-		close(fd_epg);
-		return -1;
-	}
-
-	while (to > 0) {
-		int res;
-
-		memset(&ufd, 0, sizeof(ufd));
-		ufd.fd = fd_epg;
-		ufd.events = POLLIN;
-
-		res = poll(&ufd, 1, 1000);
-		if (0 == res) {
-			fprintf(stderr, ".");
-			fflush(stderr);
-			to--;
-			continue;
+		if (ioctl(fd_epg, DMX_SET_FILTER, &sctFilterParams) < 0) {
+			perror("DMX_SET_FILTER:");
+			close(fd_epg);
+			return -1;
 		}
-		if (1 == res) {
-			found = 1;
-			break;
+
+		for (to = timeout; to > 0; to--) {
+			int res;
+			struct pollfd ufd = {
+				.fd = fd_epg,
+				.events = POLLIN,
+			};
+
+			res = poll(&ufd, 1, 1000);
+			if (0 == res) {
+				fprintf(stderr, ".");
+				fflush(stderr);
+				continue;
+			}
+			if (1 == res) {
+				found = true;
+				break;
+			}
+			fprintf(stderr, "error polling for data");
+			close(fd_epg);
+			return -1;
 		}
-		fprintf(stderr, "error polling for data");
-		close(fd_epg);
-		return -1;
-	}
-	fprintf(stdout, "\n");
-	if (0 == found) {
-		fprintf(stderr, "timeout - try tuning to a multiplex?\n");
-		close(fd_epg);
-		return -1;
+		fprintf(stdout, "\n");
+		if (!found) {
+			fprintf(stderr, "timeout - try tuning to a multiplex?\n");
+			close(fd_epg);
+			return -1;
+		}
+
+		signal(SIGALRM, finish_up);
+		alarm(timeout);
+	} else {
+		// disable alarm timeout for normal files
+		timeout = 0;
 	}
 
-	/* I only read the first packet here, in my case this is the whole packet
-	 * This should be...fixed. esp to make parsing recorded streams for debugging
-	 * easier/possible
-	 *
-	 * (The dvb demultiplexer seems to simply output this in individual whole packets)
-	 */
-	while ((n = read(fd_epg, buf, 4096))) {
-		if (buf[0] == 0)
-			continue;
-		packet_count++;
-		status();
-		parseeit(buf, n);
-		memset(&buf, 0, sizeof(buf));
-	}
-
+	dup2(fd_epg, STDIN_FILENO);
 	close(fd_epg);
-	finish_up();
+
 	return 0;
 } /*}}}*/
 
@@ -589,7 +621,6 @@ static void readZapInfo() {
 
 /* Main function. {{{ */
 int main(int argc, char **argv) {
-	int ret;
 	ProgName = argv[0];
 	/* Process command line arguments */
 	do_options(argc, argv);
@@ -598,14 +629,14 @@ int main(int argc, char **argv) {
 	printf("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n");
 	printf("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n");
 	printf("<tv generator-info-name=\"dvb-epg-gen\">\n");
-	readZapInfo();
-	signal(SIGALRM, finish_up);
-	alarm(timeout);
-	ret = readEventTables(timeout);
-	if (ret != 0) {
+	if (openInput() != 0) {
 		fprintf(stderr, "Unable to get event data from multiplex.\n");
 		exit(1);
 	}
+
+	readZapInfo();
+	readEventTables();
+	finish_up();
 
 	return 0;
 } /*}}}*/
