@@ -49,9 +49,9 @@ const char *id = "@(#) $Id$";
 /* FIXME: put these as options */
 #define CHANNELS_CONF "channels.conf"
 #define CHANIDENTS    "chanidents"
-#define DEMUX         "/dev/dvb/adapter0/demux0"
 
 static char *ProgName;
+static char *demux = "/dev/dvb/adapter0/demux0";
 
 static int timeout  = 10;
 static int packet_count = 0;
@@ -78,7 +78,8 @@ static struct chninfo *channels;
 
 /* Print usage information. {{{ */
 static void usage() {
-	fprintf(stderr, "Usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] > dump.xmltv\n\n"
+	fprintf(stderr, "Usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] -f file | > dump.xmltv\n\n"
+		"\t-f file - Write output to file instead of stdout\n"
 		"\t-t timeout - Stop after timeout seconds of no new data\n"
 		"\t-o offset  - time offset in hours from -12 to 12\n"
 		"\t-c - Use Channel Identifiers from file 'chanidents'\n"
@@ -111,12 +112,21 @@ static int do_options(int arg_count, char **arg_strings) {
 	};
 	int c;
 	int Option_Index = 0;
+	int fd;
 
 	while (1) {
-		c = getopt_long(arg_count, arg_strings, "udscmpnht:o:", Long_Options, &Option_Index);
+		c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:", Long_Options, &Option_Index);
 		if (c == EOF)
 			break;
 		switch (c) {
+		case 'f':
+			if ((fd = open(optarg, O_CREAT | O_TRUNC | O_WRONLY, 0666)) < 0) {
+				fprintf(stderr, "%s: Can't write file %s\n", ProgName, optarg);
+				usage();
+			}
+			dup2(fd, STDOUT_FILENO);
+			close(fd);
+			break;
 		case 't':
 			timeout = atoi(optarg);
 			if (0 == timeout) {
@@ -479,12 +489,12 @@ static int readEventTables(unsigned int to) {
 	t = 0;
 
 	//FIXME - no hardcoded device
-	if ((fd_epg = open(DEMUX, O_RDWR)) < 0) {
+	if ((fd_epg = open(demux, O_RDWR)) < 0) {
 		perror("fd_epg DEVICE: ");
 		return -1;
 	}
 
-	if ((fd_time = open(DEMUX, O_RDWR)) < 0) {
+	if ((fd_time = open(demux, O_RDWR)) < 0) {
 		perror("fd_time DEVICE: ");
 		return -1;
 	}
@@ -584,6 +594,7 @@ int main(int argc, char **argv) {
 	/* Process command line arguments */
 	do_options(argc, argv);
 	fprintf(stderr, "\n");
+
 	printf("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n");
 	printf("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n");
 	printf("<tv generator-info-name=\"dvb-epg-gen\">\n");
