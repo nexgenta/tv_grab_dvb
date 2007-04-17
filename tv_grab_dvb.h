@@ -10,7 +10,7 @@ struct lookup_table {
 	char *desc;
 };
 
-extern char *lookup(struct lookup_table *l, int id);
+extern char *lookup(const struct lookup_table *l, int id);
 
 /* dvb_info_tables.c */
 extern const struct lookup_table description_table[];

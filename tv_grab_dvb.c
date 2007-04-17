@@ -26,7 +26,7 @@ Or, point your browser to http://www.gnu.org/copyleft/gpl.html
 */
 
 
-static char *id="@(#) $Id$";
+static const char *id="@(#) $Id$";
 
 #include <stdio.h>
 #include <stdlib.h>

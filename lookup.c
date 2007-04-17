@@ -3,7 +3,7 @@
 
 #include "tv_grab_dvb.h"
 
-char *lookup(struct lookup_table *l, int id) {
+char *lookup(const struct lookup_table *l, int id) {
 	
 //	printf("Looked up %x", id);
 	for(;(l->id != id)&&(l->id != -1);l++) {
