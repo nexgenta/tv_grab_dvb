@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "lookup.h"
+#include "tv_grab_dvb.h"
 
-extern char* lookup(struct lookup_table *l, int id) {
+char *lookup(struct lookup_table *l, int id) {
 	
 //	printf("Looked up %x", id);
 	for(;(l->id != id)&&(l->id != -1);l++) {

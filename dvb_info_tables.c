@@ -1,12 +1,11 @@
-/* 
+/*
  * tv_grab_dvb - (c) Mark Bryars 2004
  * God bless vim and macros, this would have taken forever to format otherwise.
- * 
  */
 
-#include "lookup.h"
+#include "tv_grab_dvb.h"
 
-static struct lookup_table description_table[]={ 
+const struct lookup_table description_table[]={
 	{ 0x10, "Movie / Drama" },
 	{ 0x11, "Movie - detective/thriller" },
 	{ 0x12, "Movie - adventure/western/war" },
@@ -104,7 +103,7 @@ static struct lookup_table description_table[]={
 	{ -1, NULL }	
 };
 
-static struct lookup_table aspect_table[] = {
+const struct lookup_table aspect_table[] = {
         {0, "4:3"},   // 4/3  
         {1, "16:9"},  // 16/9 WITH PAN VECTORS
         {2, "16:9"},  // 16/9 WITHOUT
@@ -112,7 +111,7 @@ static struct lookup_table aspect_table[] = {
 	{-1, NULL }	
 };
 
-static struct lookup_table audio_table[] = {
+const struct lookup_table audio_table[] = {
 	{0x01, "mono" },      //single mono
 	{0x02, "mono" },	  //dual mono - stereo??
 	{0x03, "stereo" },
@@ -122,5 +121,3 @@ static struct lookup_table audio_table[] = {
         {0x41, "x-hardofhearing"}, // hard hearing sound
 	{-1, NULL }
 };
-
-

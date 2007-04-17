@@ -47,9 +47,8 @@ static char *id="@(#) $Id$";
 									
 
 #include <linux/dvb/dmx.h>
+#include "tv_grab_dvb.h"
 #include "si_tables.h"
-#include "dvb_info_tables.h"
-#include "crc32.h"
 
 #define bcdtoint(i) ((((i & 0xf0) >> 4) * 10) + (i & 0x0f))
 
