@@ -41,6 +41,7 @@ const char *id = "@(#) $Id$";
 #include <signal.h>
 #include <time.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #include <linux/dvb/dmx.h>
 #include "si_tables.h"
@@ -209,41 +210,90 @@ static char *xmllang(u_char *l) {
 } /*}}}*/
 
 /* Parse 0x4D Short Event Descriptor. {{{ */
-static void parseEventDescription(char *evtdesc) {
-   int evtlen, dsclen;
-   char evt[256];
-   char dsc[256];
+static void parseEventDescription(void *data) {
+	assert(GetDescriptorTag(data) == 0x4D);
+	struct descr_short_event *evtdesc = data;
+	char evt[256];
+	char dsc[256];
 
-   evtlen = *(evtdesc+5) & 0xff;
-   dsclen = *(evtdesc+6+evtlen) & 0xff;
-   strncpy(evt, evtdesc + 6, evtlen);
-   strncpy(dsc, evtdesc + 7 + evtlen, dsclen);
-   evt[evtlen] = 0;
-   dsc[dsclen] = 0;
+	int evtlen = evtdesc->event_name_length;
+	strncpy(evt, (char *)&evtdesc->data, evtlen);
+	evt[evtlen] = '\0';
 
-   printf("\t<title lang=\"%s\">%s</title>\n", xmllang(evtdesc + 2), xmlify(evt));
-   if (*dsc)
-     printf("\t<desc lang=\"%s\">%s</desc>\n", xmllang(evtdesc + 2), xmlify(dsc));
-}
+	int dsclen = evtdesc->data[evtlen];
+	strncpy(dsc, (char *)&evtdesc->data[evtlen+1], dsclen);
+	dsc[dsclen] = '\0';
+
+	printf("\t<title lang=\"%s\">%s</title>\n", xmllang(&evtdesc->lang_code1), xmlify(evt));
+	if (*dsc) {
+		char *d = xmlify(dsc);
+		if (d && *d)
+			printf("\t<sub-title lang=\"%s\">%s</sub-title>\n", xmllang(&evtdesc->lang_code1), d);
+	}
+} /*}}}*/
+
+/* Parse 0x4E Extended Event Descriptor. {{{ */
+void parseLongEventDescription(void *data) {
+	assert(GetDescriptorTag(data) == 0x4E);
+	struct descr_extended_event *levt = data;
+	char dsc[256];
+	bool non_empty = (levt->descriptor_number || levt->last_descriptor_number || levt->length_of_items || levt->data[0]);
+
+	if (non_empty && levt->descriptor_number == 0)
+		printf("\t<desc lang=\"%s\">", xmllang(&levt->lang_code1));
+
+	void *p = &levt->data;
+	int i;
+	for (i = 0; i < levt->length_of_items; i++) {
+		struct item_extended_event *name = p;
+		int name_len = name->item_description_length;
+		assert(p+ITEM_EXTENDED_EVENT_LEN+name_len < data+GetDescriptorLength(data));
+		strncpy(dsc, (char *)&name->data, name_len);
+		dsc[name_len] = '\0';
+		printf("%s: ", xmlify(dsc));
+
+		p += ITEM_EXTENDED_EVENT_LEN + name_len;
+
+		struct item_extended_event *value = p;
+		int value_len = value->item_description_length;
+		assert(p+ITEM_EXTENDED_EVENT_LEN+value_len < data+GetDescriptorLength(data));
+		strncpy(dsc, (char *)&value->data, value_len);
+		dsc[value_len] = '\0';
+		printf("%s; ", xmlify(dsc));
+
+		p += ITEM_EXTENDED_EVENT_LEN + value_len;
+	}
+	struct item_extended_event *text = p;
+	int len = text->item_description_length;
+	if (non_empty && len) {
+		strncpy(dsc, (char *)&text->data, len);
+		dsc[len] = '\0';
+		printf("%s", xmlify(dsc));
+	}
+
+	//printf("/%d/%d/%s", levt->descriptor_number, levt->last_descriptor_number, xmlify(dsc));
+	if (non_empty && levt->descriptor_number == levt->last_descriptor_number)
+		printf("</desc>\n");
+} /*}}}*/
 
 /* Parse 0x50 Component Descriptor.  {{{
    video is a flag, 1=> output the video information, 0=> output the
    audio information.  seen is a pointer to a counter to ensure we
    only output the first one of each (XMLTV can't cope with more than
    one) */
-static void parseComponentDescription(descr_component_t *dc, int video, int *seen) {
+enum CR { LANGUAGE, VIDEO, AUDIO, SUBTITLE };
+static void parseComponentDescription(void *data, enum CR round, int *seen) {
+	assert(GetDescriptorTag(data) == 0x50);
+	struct descr_component *dc = data;
 	char buf[256];
 
-	//assert(dc->descriptor_tag == 0x50);
-
-	//Extract and null terminate buffer
-	if ((dc->descriptor_length - 6) > 0)
-		strncpy(buf, (char*)dc + DESCR_COMPONENT_LEN, dc->descriptor_length - 6);
-	buf[dc->descriptor_length - 6] = 0;
+	int len = dc->descriptor_length;
+	strncpy(buf, (char *)&dc->data, len);
+	buf[len] = '\0';
 
 	switch (dc->stream_content) {
 		case 0x01: // Video Info
-			if (video && !*seen) {
+			if (round == VIDEO && !*seen) {
 				//if ((dc->component_type-1)&0x08) //HD TV
 				//if ((dc->component_type-1)&0x04) //30Hz else 25
 				printf("\t<video>\n");
@@ -253,18 +303,29 @@ static void parseComponentDescription(descr_component_t *dc, int video, int *see
 			}
 			break;
 		case 0x02: // Audio Info
-			if (!video && !*seen) {
+			if (round == AUDIO && !*seen) {
 				printf("\t<audio>\n");
 				printf("\t\t<stereo>%s</stereo>\n", lookup(audio_table, (dc->component_type)));
 				printf("\t</audio>\n");
 				(*seen)++;
 			}
+			if (round == LANGUAGE) {
+				if (!*seen)
+					printf("\t<language>%s</language>\n", xmllang(&dc->lang_code1));
+				else
+					printf("\t<!--language>%s</language-->\n", xmllang(&dc->lang_code1));
+				(*seen)++;
+			}
 			break;
 		case 0x03: // Teletext Info
+			if (round == SUBTITLE) {
 			// FIXME: is there a suitable XMLTV output for this?
 			// if ((dc->component_type)&0x10) //subtitles
 			// if ((dc->component_type)&0x20) //subtitles for hard of hearing
-			// + other aspect nonsense
+				printf("\t<subtitles type=\"teletext\">\n");
+				printf("\t\t<language>%s</language>\n", xmllang(&dc->lang_code1));
+				printf("\t</subtitles>\n");
+			}
 			break;
 			// case 0x04: // AC3 info
 	}
@@ -280,24 +341,69 @@ static void parseComponentDescription(descr_component_t *dc, int video, int *see
 #endif
 } /*}}}*/
 
+static inline void set_bit(int *bf, int b) {
+	int i = b / 8 / sizeof(int);
+	int s = b % (8 * sizeof(int));
+	bf[i] |= (1 << s);
+}
+
+static inline bool get_bit(int *bf, int b) {
+	int i = b / 8 / sizeof(int);
+	int s = b % (8 * sizeof(int));
+	return bf[i] & (1 << s);
+}
+
 /* Parse 0x54 Content Descriptor. {{{ */
-static void parseContentDescription(descr_content_t *dc) {
-	int c1, c2;
-	int i;
-	for (i = 0; i < dc->descriptor_length; i += 2) {
-		nibble_content_t *nc = CastContentNibble((char*)dc + DESCR_CONTENT_LEN + i);
-		c1 = (nc->content_nibble_level_1 << 4) + nc->content_nibble_level_2;
-		c2 = (nc->user_nibble_1 << 4) + nc->user_nibble_2;
-		if (c1 > 0) {
+static void parseContentDescription(void *data) {
+	assert(GetDescriptorTag(data) == 0x54);
+	struct descr_content *dc = data;
+	int once[256/8/sizeof(int)] = {0,};
+	void *p;
+	for (p = &dc->data; p < data + dc->descriptor_length; p += NIBBLE_CONTENT_LEN) {
+		struct nibble_content *nc = p;
+		int c1 = (nc->content_nibble_level_1 << 4) + nc->content_nibble_level_2;
+		int c2 = (nc->user_nibble_1 << 4) + nc->user_nibble_2;
+		if (c1 > 0 && !get_bit(once, c1)) {
+			set_bit(once, c1);
 			char *c = lookup(description_table, c1);
 			if (c)
 				printf("\t<category>%s</category>\n", c);
+#ifdef CATEGORY_UNKNOWN
+			else
+				printf("\t<!--category>%02X</category-->\n", c1);
+#endif
 		}
 		// This is weird in the uk, they use user but not content, and almost the same values
-		if (c2 > 0) {
+		if (c2 > 0 && !get_bit(once, c2)) {
+			set_bit(once, c2);
 			char *c = lookup(description_table, c2);
 			if (c)
 				printf("\t<category>%s</category>\n", c);
+#ifdef CATEGORY_UNKNOWN
+			else
+				printf("\t<!--category>%02X</category-->\n", c2);
+#endif
+		}
+	}
+} /*}}}*/
+
+/* Parse 0x55 Rating Descriptor. {{{ */
+void parseRatingDescription(void *data) {
+	assert(GetDescriptorTag(data) == 0x55);
+	struct descr_parental_rating *pr = data;
+	void *p;
+	for (p = &pr->data; p < data + pr->descriptor_length; p += PARENTAL_RATING_ITEM_LEN) {
+		struct parental_rating_item *pr = p;
+		switch (pr->rating) {
+			case 0x00: /*undefined*/
+				break;
+			case 0x01 ... 0x0F:
+				printf("\t<rating system=\"dvb\">\n");
+				printf("\t\t<value>%d</value>\n", pr->rating + 3);
+				printf("\t</rating>\n");
+				break;
+			case 0x10 ... 0xFF: /*broadcaster defined*/
+				break;
 		}
 	}
 } /*}}}*/
@@ -310,45 +416,65 @@ static void parseContentDescription(descr_content_t *dc) {
 'video', 'audio', 'previously-shown', 'premiere', 'last-chance',
 'new', 'subtitles', 'rating', 'star-rating'
 */
-static void parseDescription(char *desc, int len) {
-	int i, round, tag, taglen, seen;
-	for (round = 0; round < 4; round++) {
-		seen = 0;                        // no video/audio seen in this round
-		for (i = 0; i < len; ) {
+static void parseDescription(void *data, size_t len) {
+	int round;
 
-			tag = *(desc+i) & 0xff;
-			taglen = *(desc + i + 1) & 0xff;
-			if (taglen > 0) {
-				switch (tag) {
-					case 0:
-						break;
-					case 0x4D: //short evt desc, [title] [desc]
-						if (round == 0)
-							parseEventDescription(desc+i);
-						break;
-					case 0x4E: //long evt descriptor
-						if (round == 0)
-							printf("\t<!-- Long Event Info Detected - Bug Author to decode -->\n");
-						break;
-					case 0x50: //component desc [video] [audio]
-						if (round == 2)
-							parseComponentDescription(CastComponentDescriptor(desc + i), 1, &seen);
-						else if (round == 3)
-							parseComponentDescription(CastComponentDescriptor(desc + i), 0, &seen);
-						break;
-					case 0x54: //content desc [category]
-						if (round == 1)
-							parseContentDescription(CastContentDescriptor(desc + i));
-						break;
-					case 0x64: //Data broadcast desc - Text Desc for Data components
-						break;
-					default:
-						if (round == 0)
-							printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n", tag, taglen);
-				}
+	for (round = 0; round < 6; round++) {
+		int seen = 0; // no language/video/audio/subtitle seen in this round
+		void *p;
+		for (p = data; p < data + len; p += DESCR_GEN_LEN + GetDescriptorLength(p)) {
+			struct descr_gen *desc = p;
+			switch (GetDescriptorTag(desc)) {
+				case 0:
+					break;
+				case 0x4D: //short evt desc, [title] [desc]
+					if (round == 0)
+						parseEventDescription(desc);
+					break;
+				case 0x4E: //long evt descriptor
+					if (round == 0)
+						parseLongEventDescription(desc);
+					break;
+				case 0x50: //component desc [video] [audio]
+					if (round == 2)
+						parseComponentDescription(desc, LANGUAGE, &seen);
+					else if (round == 3)
+						parseComponentDescription(desc, VIDEO, &seen);
+					else if (round == 4)
+						parseComponentDescription(desc, AUDIO, &seen);
+					else if (round == 5)
+						parseComponentDescription(desc, SUBTITLE, &seen);
+					break;
+				case 0x54: // content desc [category]
+					if (round == 1)
+						parseContentDescription(desc);
+					break;
+				case 0x55: // Parental Rating Descriptor
+					if (round == 5)
+						parseRatingDescription(desc);
+					break;
+				case 0x5f: // Private Data Specifier
+					break;
+				case 0x64: // Data broadcast desc - Text Desc for Data components
+					break;
+				case 0x69: // Programm Identification Label
+					break;
+				case 0x82: // VPS (ARD, ZDF, ORF)
+					// TODO: <programme @vps-start="???">
+					break;
+				case 0x4F: // Time Shifted Event
+				case 0x52: // Stream Identifier Descriptor
+				case 0x53: // CA Identifier Descriptor
+				case 0x5E: // Multi Lingual Component Descriptor
+				case 0x81: // FIXME ???
+				case 0x83: // Logical Channel Descriptor (some kind of news-ticker on ARD-MHP-Data?)
+				case 0x84: // Preferred Name List Descriptor
+				case 0x85: // Preferred Name Identifier Descriptor
+				case 0x86: // Eacem Stream Identifier Descriptor
+				default:
+					if (round == 0)
+						printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n", GetDescriptorTag(desc), GetDescriptorLength(desc));
 			}
-
-			i += taglen + 2;
 		}
 	}
 } /*}}}*/
@@ -372,29 +498,20 @@ static void parseMJD(long int mjd, struct tm *t) {
 } /*}}}*/
 
 /* Parse Event Information Table. {{{ */
-static void parseEIT(char *eitbuf, int len) {
-	char        desc[4096];
-	int         dll, j;
-	eit_t       *e = (eit_t *)eitbuf;
-	eit_event_t *evt = (eit_event_t *)(eitbuf + EIT_LEN);
-	chninfo_t   *c = channels;
-	struct tm   dvb_time;
-	time_t      start_time, stop_time, now;
-	char        date_strbuf[256];
+static void parseEIT(void *data, size_t len) {
+	struct eit *e = data;
+	void *p;
+	struct tm  dvb_time;
+	char       date_strbuf[256];
 
-	if( _dvb_crc32((uint8_t*)eitbuf, len) != 0) {
-		crcerr_count++;
-		status();
-		return;
-	}
 	len -= 4; //remove CRC
 
-	j = 0;
 	// For each event listing
-	while (evt != NULL) {
-		j++;
+	for (p = &e->data; p < data + len; p += EIT_EVENT_LEN + GetEITDescriptorsLoopLength(p)) {
+		struct eit_event *evt = p;
+		struct chninfo *c;
 		// find existing information?
-		while (c != NULL) {
+		for (c = channels; c != NULL; c = c->next) {
 			// found it
 			if (c->sid == HILO(e->service_id) && (c->eid == HILO(evt->event_id))) {
 				if (c->ver <= e->version_number) // seen it before or its older FIXME: wrap-around to 0
@@ -407,8 +524,6 @@ static void parseEIT(char *eitbuf, int len) {
 					break;
 				}
 			}
-			// its not it
-			c = c->next;
 		}
 
 		// its a new program
@@ -434,13 +549,14 @@ static void parseEIT(char *eitbuf, int len) {
 		dvb_time.tm_sec =  BcdCharToInt(evt->start_time_s);
 		dvb_time.tm_min =  BcdCharToInt(evt->start_time_m);
 		dvb_time.tm_hour = BcdCharToInt(evt->start_time_h) + time_offset;
-		start_time = timegm(&dvb_time);
+		time_t start_time = timegm(&dvb_time);
 
 		dvb_time.tm_sec  += BcdCharToInt(evt->duration_s);
 		dvb_time.tm_min  += BcdCharToInt(evt->duration_m);
 		dvb_time.tm_hour += BcdCharToInt(evt->duration_h);
-		stop_time = timegm(&dvb_time);
+		time_t stop_time = timegm(&dvb_time);
 
+		time_t now;
 		time(&now);
 		// basic bad date check. if the program ends before this time yesterday, or two weeks from today, forget it.
 		if ((difftime(stop_time, now) < -24*60*60) || (difftime(now, stop_time) > 14*24*60*60) ) {
@@ -462,17 +578,8 @@ static void parseEIT(char *eitbuf, int len) {
 		//printf("\t<RunningStatus>%i</RunningStatus>\n", evt->running_status);
 		//1 Airing, 2 Starts in a few seconds, 3 Pausing, 4 About to air
 
-		strncpy(desc, (char *)evt+EIT_EVENT_LEN, dll);
-		desc[dll + 1] = 0;
-		parseDescription(desc, dll);
+		parseDescription(&evt->data, GetEITDescriptorsLoopLength(evt));
 		printf("</programme>\n");
-		//printf("<!--DEBUG Record #%d %d %d %d -->\n", j, dll, len, len-dll-EIT_EVENT_LEN);
-
-		// Skip to next entry in table
-		evt = (eit_event_t*)((char*)evt+EIT_EVENT_LEN+dll);
-		len -= EIT_EVENT_LEN + dll;
-		if (len<EIT_EVENT_LEN)
-			return;
 	}
 } /*}}}*/
 
@@ -603,19 +710,17 @@ static int openInput(void) {
 static void readZapInfo() {
 	FILE *fd_zap;
 	char buf[256];
-	char *chansep, *id;
-	int chanid;
 	if ((fd_zap = fopen(CHANNELS_CONF, "r")) == NULL) {
 		fprintf(stderr, "No [cst]zap channels.conf to produce channel info");
 		return;
 	}
 
-	while (fgets(buf, 256, fd_zap)) {
-		id = strrchr(buf, ':')+1;
-		chansep = strchr(buf, ':');
+	while (fgets(buf, sizeof(buf), fd_zap)) {
+		char *id = strrchr(buf, ':') + 1;
+		char *chansep = strchr(buf, ':');
 		if (id && chansep) {
 			*chansep = '\0';
-			chanid = atoi(id);
+			int chanid = atoi(id);
 			printf("<channel id=\"%s\">\n", get_channelident(chanid));
 			printf("\t<display-name>%s</display-name>\n", xmlify(buf));
 			printf("</channel>\n");
