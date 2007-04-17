@@ -74,6 +74,7 @@ typedef struct chninfo {
 	int ver;
 } chninfo_t;
 
+static struct lookup_table *channelid_table;
 static struct chninfo *channels;
 
 /* Print usage information. {{{ */
@@ -184,42 +185,45 @@ static int do_options(int arg_count, char **arg_strings) {
 /* Lookup channel-id. {{{ */
 static char *get_channelident(int chanid) {
 	static char returnstring[256];
-	FILE *fd_ci;
-	char buf2[256];
-	int chanmatch = 0;
 
-	if (use_chanidents) {
-		fd_ci = fopen(CHANIDENTS, "r");
-		while (fgets(buf2, 256, fd_ci) && !chanmatch) {
-			sscanf(buf2, "%d %s", &chanmatch, returnstring);
-			if (chanmatch != chanid) chanmatch = 0;
-		}
-		fclose(fd_ci);
+	if (use_chanidents && channelid_table) {
+		char *c = lookup(channelid_table, chanid);
+		if (c)
+			return c;
 	}
-	if (!chanmatch)
-		sprintf(returnstring, "%d.dvb.guide", chanid);
+	sprintf(returnstring, "%d.dvb.guide", chanid);
 	return returnstring;
+} /*}}}*/
+
+/* Parse language-id translation file. {{{ */
+static char *xmllang(u_char *l) {
+	union lookup_key lang = {
+		.c[0] = (char)l[0],
+		.c[1] = (char)l[1],
+		.c[2] = (char)l[2],
+		.c[3] = '\0',
+	};
+
+	char *c = lookup(languageid_table, lang.i);
+	return c ? c : lang.c;
 } /*}}}*/
 
 /* Parse 0x4D Short Event Descriptor. {{{ */
 static void parseEventDescription(char *evtdesc) {
    int evtlen, dsclen;
-   char lang[3];
    char evt[256];
    char dsc[256];
 
    evtlen = *(evtdesc+5) & 0xff;
    dsclen = *(evtdesc+6+evtlen) & 0xff;
-   strncpy(lang, evtdesc + 2, 3);
    strncpy(evt, evtdesc + 6, evtlen);
    strncpy(dsc, evtdesc + 7 + evtlen, dsclen);
-   lang[3] = 0;
    evt[evtlen] = 0;
    dsc[dsclen] = 0;
 
-   printf("\t<title lang=\"%s\">%s</title>\n", lang, xmlify(evt));
+   printf("\t<title lang=\"%s\">%s</title>\n", xmllang(evtdesc + 2), xmlify(evt));
    if (*dsc)
-     printf("\t<desc lang=\"%s\">%s</desc>\n", lang, xmlify(dsc));
+     printf("\t<desc lang=\"%s\">%s</desc>\n", xmllang(evtdesc + 2), xmlify(dsc));
 }
 
 /* Parse 0x50 Component Descriptor.  {{{
@@ -229,12 +233,8 @@ static void parseEventDescription(char *evtdesc) {
    one) */
 static void parseComponentDescription(descr_component_t *dc, int video, int *seen) {
 	char buf[256];
-	char lang[3];
 
 	//assert(dc->descriptor_tag == 0x50);
-
-	strncpy(lang, (char*)(dc)+5, 3);
-	lang[3] = 0;
 
 	//Extract and null terminate buffer
 	if ((dc->descriptor_length - 6) > 0)
@@ -243,32 +243,32 @@ static void parseComponentDescription(descr_component_t *dc, int video, int *see
 
 	switch (dc->stream_content) {
 		case 0x01: // Video Info
-                  if (video && !*seen) {
-                        //if ((dc->component_type-1)&0x08) //HD TV
-                        //if ((dc->component_type-1)&0x04) //30Hz else 25
-                        printf("\t<video>\n");
-                        printf("\t\t<aspect>%s</aspect>\n", lookup((struct lookup_table*)&aspect_table, (dc->component_type-1) & 0x03));
-                        printf("\t</video>\n");
-                        (*seen)++;
-                        break;
-                    }
-		case 0x02: // Audio Info
-                  if (!video && !*seen) {
-			printf("\t<audio>\n");
-			printf("\t\t<stereo>%s</stereo>\n", lookup((struct lookup_table*)&audio_table, (dc->component_type)));
-			printf("\t</audio>\n");
-                        (*seen)++;
+			if (video && !*seen) {
+				//if ((dc->component_type-1)&0x08) //HD TV
+				//if ((dc->component_type-1)&0x04) //30Hz else 25
+				printf("\t<video>\n");
+				printf("\t\t<aspect>%s</aspect>\n", lookup(aspect_table, (dc->component_type-1) & 0x03));
+				printf("\t</video>\n");
+				(*seen)++;
+			}
 			break;
-                    }
+		case 0x02: // Audio Info
+			if (!video && !*seen) {
+				printf("\t<audio>\n");
+				printf("\t\t<stereo>%s</stereo>\n", lookup(audio_table, (dc->component_type)));
+				printf("\t</audio>\n");
+				(*seen)++;
+			}
+			break;
 		case 0x03: // Teletext Info
 			// FIXME: is there a suitable XMLTV output for this?
 			// if ((dc->component_type)&0x10) //subtitles
 			// if ((dc->component_type)&0x20) //subtitles for hard of hearing
 			// + other aspect nonsense
 			break;
-		// case 0x04: // AC3 info
+			// case 0x04: // AC3 info
 	}
-	/*
+#if 0
 	printf("\t<StreamComponent>\n");
 	printf("\t\t<StreamContent>%d</StreamContent>\n", dc->stream_content);
 	printf("\t\t<ComponentType>%x</ComponentType>\n", dc->component_type);
@@ -277,7 +277,7 @@ static void parseComponentDescription(descr_component_t *dc, int video, int *see
 	printf("\t\t<Language>%s</Language>\n", lang);
 	printf("\t\t<Data>%s</Data>\n", buf);
 	printf("\t</StreamComponent>\n");
-	*/
+#endif
 } /*}}}*/
 
 /* Parse 0x54 Content Descriptor. {{{ */
@@ -288,11 +288,17 @@ static void parseContentDescription(descr_content_t *dc) {
 		nibble_content_t *nc = CastContentNibble((char*)dc + DESCR_CONTENT_LEN + i);
 		c1 = (nc->content_nibble_level_1 << 4) + nc->content_nibble_level_2;
 		c2 = (nc->user_nibble_1 << 4) + nc->user_nibble_2;
-		if (c1 > 0)
-			printf("\t<category>%s</category>\n", lookup((struct lookup_table*)&description_table, c1));
+		if (c1 > 0) {
+			char *c = lookup(description_table, c1);
+			if (c)
+				printf("\t<category>%s</category>\n", c);
+		}
 		// This is weird in the uk, they use user but not content, and almost the same values
-		if (c2 > 0)
-			printf("\t<category>%s</category>\n", lookup((struct lookup_table*)&description_table, c2));
+		if (c2 > 0) {
+			char *c = lookup(description_table, c2);
+			if (c)
+				printf("\t<category>%s</category>\n", c);
+		}
 	}
 } /*}}}*/
 
@@ -600,7 +606,7 @@ static void readZapInfo() {
 	char *chansep, *id;
 	int chanid;
 	if ((fd_zap = fopen(CHANNELS_CONF, "r")) == NULL) {
-		fprintf(stderr, "No tzap channels.conf to produce channel info");
+		fprintf(stderr, "No [cst]zap channels.conf to produce channel info");
 		return;
 	}
 
@@ -624,6 +630,9 @@ int main(int argc, char **argv) {
 	ProgName = argv[0];
 	/* Process command line arguments */
 	do_options(argc, argv);
+	/* Load lookup tables. */
+	if (load_lookup(&channelid_table, CHANIDENTS))
+		fprintf(stderr, "Error loading %s, continuing.\n", CHANIDENTS);
 	fprintf(stderr, "\n");
 
 	printf("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n");
