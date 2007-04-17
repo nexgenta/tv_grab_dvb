@@ -3,7 +3,7 @@
 
 
 
-Please Email me with [DVBEPG] in subject to filter out spam 
+Please Email me with [DVBEPG] in subject to filter out spam
 - Copyright (C) 2004 Mark Bryars <dvb at darkskiez d0t co d0t uk>
 
 DVB code Mercilessly ripped off from dvbdate
@@ -17,8 +17,8 @@ NEWS
   Time Offset chan be changed by an option now
   A Patch by Nick again for channel ident rewriting for interoperation
   with other xmltv sources..
-  
-  
+
+
 23/05/2004 - Ver 0.6 Released
 
   This consists mostly of a patch from Nick Craig-Wood to make output
@@ -64,8 +64,8 @@ REQUIREMENTS
 USAGE
 -----
 
-It reads a channels.conf file tzap format in the current directory to decode th
-e channel names (at the moment)
+It reads a channels.conf file [cst]zap format in the current directory to
+decode the channel names (at the moment)
 May not always need this.
 
 Tested with:
@@ -88,13 +88,15 @@ tv_grab_dvb|mythfilldatabase --no-delete --file 1 0 -
 
 Works well for me to stop it messing about all the channels.
 
+DEBUGGING
+---------
+dvbsnoop -s sec 18 -b -n 200 > EIT.bin
+tv_garb_dvb -i EIT.bin -f EIT.xmltv
 
 TODO
 ----
 
-* use iconv to correctly output descriptions
 * Allow specifying path to channels.conf
-* Allow specifying the DVB card
 * Decode Subtitle info in XMLTV Style - 0.6 DTD?
 * Decode Channel names from broadcast
 
@@ -103,6 +105,8 @@ DONE
 
 * Do proper XML encoding of text. - nearly
 * Allow mapping to existing xmltv id. - thanks nick
+* use iconv to correctly output descriptions
+* Allow specifying the DVB card
 + more
 
 LICENSE
@@ -119,6 +123,5 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 Or, point your browser to http://www.gnu.org/copyleft/gpl.html
-

@@ -1,5 +1,16 @@
 ==========================================================================
-		 tv_grab_dvb 0.9 Released 07/09/2004 
+		 tv_grab_dvb 0.10 Released ??/??/2007
+==========================================================================
+02/04/2007	Philipp Hahn	<pmhahn_pmhahn_de>		0.10
+	* Add -i option for reading from file or custom demultiplex devices
+	* Add -f option for writing to file instead of stdout
+	* Support different character encodings
+	* Translate 3 letter languages to 2 letter language IDs
+	* Improved efficiency: Cache files in memory.
+
+
+==========================================================================
+		 tv_grab_dvb 0.9 Released 07/09/2004
 ==========================================================================
 26/08/2004	Jon Dye		<jon_pecorous_co_uk>		0.9
 	* Fixed Stupid 20 vs 0x20 typo - I'm sure that was there before..
@@ -11,7 +22,7 @@
 
 
 ==========================================================================
-		 tv_grab_dvb 0.8 Released 15/07/2004 
+		 tv_grab_dvb 0.8 Released 15/07/2004
 ==========================================================================
 15/07/2004	Mark Bryars	 <dvbepg_darkskiez_co_uk>	0.8
 	* Added -m -n -p options for various now next selections
@@ -20,19 +31,19 @@
 	  Thanks to Andreas Witte <Andreaz_t-online_de> for the
 	  pestering emails and the german date patch which i modified.
 
-06/06/2005 	Nick Craig-Wood <nick_craig-wood_com>
+06/06/2005	Nick Craig-Wood <nick_craig-wood_com>
 	* XMLIFY patch to output correct xml for all symbols
 	  (dont die on <'s or >'s)
-	 
+
 ==========================================================================
-		 tv_grab_dvb 0.6 Released 23/05/2004 
+		 tv_grab_dvb 0.6 Released 23/05/2004
 ==========================================================================
 23/05/2004	Mark Bryars	<dvbepg_darkskiez_co_uk>	0.6
 	* Added -O2 -Wall to compilation, fixed warnings.
 	* Reformatted ChangeLog to try and make it the standard format
 
 21/05/2004	Nick Craig-Wood <nick_craig-wood_com>
- 	* Identify XML as ISO-8859-1 (latin1) rather than UTF8.  Pound signs
+	* Identify XML as ISO-8859-1 (latin1) rather than UTF8.  Pound signs
 	   etc blow up the XML parser if you identify as UTF8
 	* Aspect ratios should have colons not slashes according to XMLTV
 	* Don't ever output control characters (some of these creep in the
@@ -49,7 +60,7 @@
 	* Added 'Drama' code for UK Freeview EPG content description.
 
 ==========================================================================
-		 tv_grab_dvb 0.5 Released 08/05/2004 
+		 tv_grab_dvb 0.5 Released 08/05/2004
 ==========================================================================
 
 08/05/2004	Mark Bryars	<dvbepg_darkskiez_co_uk>	0.5
@@ -60,13 +71,13 @@
 	* Disabled default output of updates to stop duplicates
 	( option -u to reenable output)
 
-07/05/2004	Steve Davies	<steve_one47_co_uk>		
+07/05/2004	Steve Davies	<steve_one47_co_uk>
 	* Improved memory management patch for xmlify routine
 
 ==========================================================================
-		 tv_grab_dvb 0.3 Released 30/04/2004 
+		 tv_grab_dvb 0.3 Released 30/04/2004
 ==========================================================================
-	
+
 30/04/2004	Mark Bryars	<dvbepg_darkskiez_co_uk>	0.3
 	* Ignore bad dates in the output (if end time was before now, discard)
 	* Added comprehensive event decoding info
@@ -75,7 +86,7 @@
 	* Still havent fixed the timezone thing.
 
 ==========================================================================
-		 tv_grab_dvb 0.2 Released 20/04/2004 
+		 tv_grab_dvb 0.2 Released 20/04/2004
 ==========================================================================
 
 20/04/2004	Mark Bryars	<dvbepg_darkskiez_co_uk>	0.2
