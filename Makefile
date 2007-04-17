@@ -4,7 +4,10 @@
 #CFLAGS=-Wall -O2 -I/usr/src/dvb-kernel/linux/include/
 CFLAGS=-Wall -O0 -g
 
-tv_grab_dvb:	tv_grab_dvb.o crc32.o lookup.o dvb_info_tables.o
+dvb_text := dvb_text.o
+dvb_text := dvb_text_iconv.o
+
+tv_grab_dvb:	tv_grab_dvb.o crc32.o lookup.o dvb_info_tables.o $(dvb_text)
 tv_grab_dvb.o:  tv_grab_dvb.h si_tables.h
 lookup.o:	tv_grab_dvb.h
 dvb_info_tables.o:	tv_grab_dvb.h

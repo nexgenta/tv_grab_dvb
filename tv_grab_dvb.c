@@ -204,65 +204,6 @@ char *get_channelident(int chanid) {
 	return returnstring;
 }
 
-
-/* Add text to the end of string, returning a pointer to the end of string */
-/* Added by Nick Craig-Wood - nick craig-wood com */
-
-static char *add_string(char * string, const char *text) {
-	int len = strlen(text);
-	memcpy(string, text, len);
-	return string + len;
-}
-	
-
-
-/* Quote the xml entities in the string passed in.
- * NB this is returned as a pointer to a string on the heap which will
- * be re-used on the next call to xmlify()
- * Patched by Nick Craig-Wood - nick craig-wood com for more chars with 
- * add_string func for tidyness
- */
-
-char *xmlify(unsigned char* s) {
-	static char *xml=NULL;
-	static unsigned bufsz=0;
-	char *r;
-	int max_len = strlen(s) * 6 + 1; /* Max possible expansion of string n * &quot; + NULL */
-		                         /* A little untidy but fast! */
-	
-	/*  Patch by Steve Davies <steve one47 co uk> for better memory management */
-	if( bufsz < max_len || xml == NULL ) {
-		xml=realloc(xml, max_len);
-		bufsz=max_len;
-	}
-	
-	r=xml;
-	while ( *s != '\0' ) {
-		switch (*s) {
-			case '&':
-				r = add_string(r, "&amp;");
-				break;
-			case '<':
-				r = add_string(r, "&lt;");
-				break;
-			case '>':
-				r = add_string(r, "&gt;");
-				break;
-			case '"':
-				r = add_string(r, "&quot;");
-				break;
-			default:
-				if (*s >= 0x20) {  // ignore control characters
-					*r++=*s;
-				}
-				break;
-		}
-		s++;
-	}
-	*r='\0';
-	return xml;
-}
-
 void parseEventDescription(char *evtdesc) 
 {
    int evtlen,dsclen;

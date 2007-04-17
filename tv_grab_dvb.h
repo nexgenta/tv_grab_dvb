@@ -20,4 +20,7 @@ extern const struct lookup_table audio_table[];
 /* crc32.c */
 extern uint32_t _dvb_crc32(const uint8_t *data, size_t len);
 
+/* dvb_text.c */
+extern char *xmlify(const char *s);
+
 #endif
