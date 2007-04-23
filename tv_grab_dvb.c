@@ -243,11 +243,11 @@ void parseLongEventDescription(void *data) {
 		printf("\t<desc lang=\"%s\">", xmllang(&levt->lang_code1));
 
 	void *p = &levt->data;
-	int i;
-	for (i = 0; i < levt->length_of_items; i++) {
+	void *data_end = data + DESCR_GEN_LEN + GetDescriptorLength(data);
+	while (p < (void *)levt->data + levt->length_of_items) {
 		struct item_extended_event *name = p;
 		int name_len = name->item_description_length;
-		assert(p+ITEM_EXTENDED_EVENT_LEN+name_len < data+GetDescriptorLength(data));
+		assert(p + ITEM_EXTENDED_EVENT_LEN + name_len < data_end);
 		strncpy(dsc, (char *)&name->data, name_len);
 		dsc[name_len] = '\0';
 		printf("%s: ", xmlify(dsc));
@@ -256,7 +256,7 @@ void parseLongEventDescription(void *data) {
 
 		struct item_extended_event *value = p;
 		int value_len = value->item_description_length;
-		assert(p+ITEM_EXTENDED_EVENT_LEN+value_len < data+GetDescriptorLength(data));
+		assert(p + ITEM_EXTENDED_EVENT_LEN + value_len < data_end);
 		strncpy(dsc, (char *)&value->data, value_len);
 		dsc[value_len] = '\0';
 		printf("%s; ", xmlify(dsc));
