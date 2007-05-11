@@ -93,6 +93,7 @@ static void usage() {
 		"\t-p - other multiplex now_next only\n"
 		"\t-s - silent - no status ouput\n"
 		"\t-u - output updated info - will result in repeated information\n"
+		"\t-e encoding - Use other than ISO-6937 default encoding\n"
 		"\n", ProgName, demux);
 	_exit(1);
 } /*}}}*/
@@ -117,7 +118,7 @@ static int do_options(int arg_count, char **arg_strings) {
 	int fd;
 
 	while (1) {
-		int c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:i:", Long_Options, &Option_Index);
+		int c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:i:e:", Long_Options, &Option_Index);
 		if (c == EOF)
 			break;
 		switch (c) {
@@ -169,6 +170,9 @@ static int do_options(int arg_count, char **arg_strings) {
 			break;
 		case 's':
 			silent = true;
+			break;
+		case 'e':
+			iso6937_encoding = optarg;
 			break;
 		case 'h':
 		case '?':

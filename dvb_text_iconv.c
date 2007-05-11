@@ -22,6 +22,9 @@ enum CS {
 static enum CS cs_old = CS_UNKNOWN;
 static iconv_t cd;
 
+/* The spec says ISO-6937, but many stations get it wrong and use ISO-8859-1. */
+char *iso6937_encoding = "ISO6937";
+
 /* Quote the xml entities in the string passed in.
  */
 char *xmlify(const char *s) {
@@ -76,7 +79,7 @@ char *xmlify(const char *s) {
 		} // if
 		switch (cs_new) {
 			case ISO6937:
-				cd = iconv_open("UCS2", "ISO6937");
+				cd = iconv_open("UCS2", iso6937_encoding);
 				break;
 			case ISO8859_5:
 				cd = iconv_open("UCS2", "ISO8859-5");
