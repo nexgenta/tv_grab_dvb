@@ -23,6 +23,7 @@ tags: $(wildcard *.[ch])
 clean:
 	$(RM) *.o tv_grab_dvb
 	$(RM) langidents.c
+	$(RM) *~ *.bak *.orig
 
 .PHONY: distclean
 distclean: clean
@@ -32,7 +33,8 @@ distclean: clean
 tar: $(PWD)
 	tar -c -f ../$(<F).tar.gz -z -h -C .. -v \
 		--exclude=*.o --exclude=tags --exclude=.gdbinit \
-		--exclude=langidents.c --exclude=tv_grab_dvb \
-		--exclude=test --exclude=.*.swp \
+		--exclude=langidents.c --exclude=tv_grab_dvb/tv_grab_dvb \
+		--exclude=test --exclude=patches --exclude=.*.swp \
 		--exclude=*~ --exclude=*.bak --exclude=*.orig \
+		--exclude=.svn \
 		$(<F)
