@@ -1,5 +1,5 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
-.TH TV_GRAB_DVB 1 "2007-05-11"
+.TH TV_GRAB_DVB 1 "2007-08-22"
 .\" Please adjust this date whenever revising the manpage.
 .SH NAME
 tv_grab_dvb \- Grab TV listings for DVB EIT data.
@@ -62,13 +62,14 @@ DVB supports multiple character encodings.
 But many stations seem to think, that \fBISO8859\-1\fP is used when no explicit encoding is given.
 Since this is not so, the default character encoding can be changed to any encoding listed by \fBiconv \-l\fP.
 .SH BUGS
-Rule number one: your broadcast station is at fault.
-The information transmitted varies very much and there is no simple way to extract useful information from many stations data.
+Rule number one:
+It's the fault of your broadcast station.
+The information transmitted varies greatly and there is no simple way to extract useful information from many stations data.
 \fBtv_grab_dvb\fP can't create data from thin air and text parsing becomes very ugly very fast.
 Please bear this in mind when you start complaining.
 .PP
 If \fBtv_grab_dvb\fP segfaults or reports an error, please try to capture some data using \fBdvbsnoop \-s sec 18 \-b \-n 200 > file\fP, until you're able to reproduce the bug using \fBtv_grab_dvb \-i file \-o /dev/null\fP.
-Than please send uns that file.
+Than please send us that file.
 .SH SEE ALSO
 .BR xmltv (3pm),
 .BR czap (1),
