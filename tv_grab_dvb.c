@@ -202,12 +202,11 @@ static char *get_channelident(int chanid) {
 
 /* Parse language-id translation file. {{{ */
 static char *xmllang(u_char *l) {
-	union lookup_key lang = {
-		.c[0] = (char)l[0],
-		.c[1] = (char)l[1],
-		.c[2] = (char)l[2],
-		.c[3] = '\0',
-	};
+	static union lookup_key lang;
+	lang.c[0] = (char)l[0];
+	lang.c[1] = (char)l[1];
+	lang.c[2] = (char)l[2];
+	lang.c[3] = '\0';
 
 	char *c = lookup(languageid_table, lang.i);
 	return c ? c : lang.c;
