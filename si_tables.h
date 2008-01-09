@@ -1541,3 +1541,61 @@ typedef struct descr_announcement_support {
 } descr_announcement_support_t;
 #define DESCR_ANNOUNCEMENT_SUPPORT_LEN sizeof (descr_announcement_support_t)
 #define CastAnnouncementSupportDescriptor(x) ((descr_announcement_support_t *)(x))
+
+/* 0x80 custom_category_descriptor TODO */
+typedef struct descr_custom_category {
+   u_char descriptor_tag                         /*:8*/;
+   u_char descriptor_length                      /*:8*/;
+   u_char dummy                                  /*:8*/; // 7F
+   u_char data_length                            /*:8*/;
+   u_char data[]; /* struct custom_category_item(1|2) */
+} descr_custom_category_t;
+struct custom_category_item1 {
+   u_char dummy                                  /*:8*/; // 10 40
+};
+struct custom_category_item2 {
+   u_char length                                 /*:8*/;
+   u_char data[]; /* struct custom_category_item3 */
+};
+struct custom_category_item3 {
+   u_char dummy0                                 /*:8*/; // FF
+#if BYTE_ORDER == BIG_ENDIAN
+   u_char content_nibble_level_1                 :4;
+   u_char content_nibble_level_2                 :4;
+   u_char user_nibble_1                          :4;
+   u_char user_nibble_2                          :4;
+#else
+   u_char user_nibble_2                          :4;
+   u_char user_nibble_1                          :4;
+   u_char content_nibble_level_2                 :4;
+   u_char content_nibble_level_1                 :4;
+#endif
+   u_char dummy1[2]                              /*:8*/; // CF E2 | D4 48
+   u_char text_length                            /*:8*/;
+   u_char text[];
+};
+
+/* 0x81 xxx_descriptor TODO */
+typedef struct descr_xxx {
+   u_char descriptor_tag                         /*:8*/;
+   u_char descriptor_length                      /*:8*/;
+   u_char dummy                                  /*:8 FF*/;
+} descr_xxx_t;
+#define DESCR_XXX_LEN sizeof (descr_xxx_t)
+#define CastXxxDescriptor(x) ((descr_xxx_t *)(x))
+
+/* 0x82 vps_descriptor TODO */
+typedef struct descr_vps {
+   u_char descriptor_tag                         /*:8*/;
+   u_char descriptor_length                      /*:8*/;
+   u_char hour[2]                                /*:8*/;
+   u_char delimiter_time                         /*:8 ':'*/;
+   u_char minute[2]                              /*:8*/;
+   u_char day[2]                                 /*:8*/;
+   u_char delimiter_date                         /*:8 '.'*/;
+   u_char month[2]                               /*:8*/;
+   u_char delimiter                              /*:8 '#'*/;
+   u_char number[2]                              /*:8*/;
+} descr_vps_t;
+#define DESCR_VPS_LEN sizeof (descr_vps_t)
+#define CastVpsDescriptor(x) ((descr_vps_t *)(x))
