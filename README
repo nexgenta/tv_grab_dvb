@@ -101,7 +101,7 @@ TODO
 * Decode Channel names from broadcast
 
 DONE
----
+----
 
 * Do proper XML encoding of text. - nearly
 * Allow mapping to existing xmltv id. - thanks nick
