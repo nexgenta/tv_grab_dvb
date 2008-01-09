@@ -718,11 +718,17 @@ static void readZapInfo() {
 		return;
 	}
 
+	/* name:freq:inversion:symbol_rate:fec:quant:vid:aid:chanid:... */
 	while (fgets(buf, sizeof(buf), fd_zap)) {
-		char *id = strrchr(buf, ':') + 1;
-		char *chansep = strchr(buf, ':');
-		if (id && chansep) {
-			*chansep = '\0';
+		int i = 0;
+		char *c, *id = NULL;
+		for (c = buf; *c; c++)
+			if (*c == ':') {
+				*c = '\0';
+				if (++i == 8) /* chanid */
+					id = c + 1;
+			}
+		if (id && *id) {
 			int chanid = atoi(id);
 			printf("<channel id=\"%s\">\n", get_channelident(chanid));
 			printf("\t<display-name>%s</display-name>\n", xmlify(buf));
