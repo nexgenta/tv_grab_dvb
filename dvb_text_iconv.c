@@ -2,111 +2,95 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <errno.h>
 #include <iconv.h>
 
 #define MAX 1024
 static char buf[MAX * 2], result[MAX * 10];
 static const char HEX[16] = "0123456789ABCDEF";
 
-enum CS {
-	CS_UNKNOWN,
-	ISO6937,
-	ISO8859_5,
-	ISO8859_6,
-	ISO8859_7,
-	ISO8859_8,
-	ISO8859_9,
-	ISO10646,
-	CS_OTHER,
-};
-static enum CS cs_old = CS_UNKNOWN;
-static iconv_t cd;
-
 /* The spec says ISO-6937, but many stations get it wrong and use ISO-8859-1. */
 char *iso6937_encoding = "ISO6937";
+
+static int encoding_default(char *t, const char **s, const char *d) {
+	strncpy(t, iso6937_encoding, 16);
+	return 0;
+}
+static int encoding_fixed(char *t, const char **s, const char *d) {
+	strncpy(t, d, 16);
+	*s += 1;
+	return 0;
+}
+static int encoding_variable(char *t, const char **s, const char *d) {
+	int i = ((unsigned char)*s[1] << 8) +  (unsigned char)*s[2];
+	snprintf(t, 16, d, i);
+	*s += 3;
+	return 0;
+}
+static int encoding_reserved(char *t, const char **s, const char *d) {
+	fprintf(stderr, "Reserved encoding: %02x\n", *s[0]);
+	return 1;
+}
+static const struct encoding {
+	int (*handler)(char *t, const char **s, const char *d);
+	const char *data;
+} encoding[256] = {
+	[0x00] = {encoding_reserved, NULL},
+	[0x01] = {encoding_fixed, "ISO-8859-5"},
+	[0x02] = {encoding_fixed, "ISO-8859-6"},
+	[0x03] = {encoding_fixed, "ISO-8859-7"},
+	[0x04] = {encoding_fixed, "ISO-8859-8"},
+	[0x05] = {encoding_fixed, "ISO-8859-9"},
+	[0x06] = {encoding_fixed, "ISO-8859-10"},
+	[0x07] = {encoding_fixed, "ISO-8859-11"},
+	[0x08] = {encoding_fixed, "ISO-8859-12"},
+	[0x09] = {encoding_fixed, "ISO-8859-13"},
+	[0x0A] = {encoding_fixed, "ISO-8859-14"},
+	[0x0B] = {encoding_fixed, "ISO-8859-15"},
+	[0x0C] = {encoding_reserved, NULL},
+	[0x0D] = {encoding_reserved, NULL},
+	[0x0E] = {encoding_reserved, NULL},
+	[0x0F] = {encoding_reserved, NULL},
+	[0x10] = {encoding_variable, "ISO-8859-%d"},
+	[0x11] = {encoding_fixed, "ISO-10646/UCS2"}, // FIXME: UCS-2 LE/BE ???
+	[0x12] = {encoding_fixed, "KSC_5601"},
+	[0x13] = {encoding_fixed, "GB_2312-80"},
+	[0x14] = {encoding_fixed, "BIG5"},
+	[0x15] = {encoding_fixed, "ISO-10646/UTF8"},
+	[0x16] = {encoding_reserved, NULL},
+	[0x17] = {encoding_reserved, NULL},
+	[0x18] = {encoding_reserved, NULL},
+	[0x19] = {encoding_reserved, NULL},
+	[0x1A] = {encoding_reserved, NULL},
+	[0x1B] = {encoding_reserved, NULL},
+	[0x1C] = {encoding_reserved, NULL},
+	[0x1D] = {encoding_reserved, NULL},
+	[0x1E] = {encoding_reserved, NULL},
+	[0x1F] = {encoding_reserved, NULL},
+	[0x20 ... 0xFF] = {encoding_default, NULL},
+};
+static char cs_old[16];
+static iconv_t cd;
 
 /* Quote the xml entities in the string passed in.
  */
 char *xmlify(const char *s) {
-	enum CS cs_new = CS_UNKNOWN;
+	char cs_new[16];
 
-	switch ((unsigned char)*s) {
-		case 0x20 ... 0xFF: // if the first byte of the text field has a value in the range of "0x20" to "0xFF" then this and all subsequent bytes in the text item are coded using the default coding table (table 00 - Latin alphabet) of figure A.1
-			cs_new = ISO6937;
-			break;
-		case 0x01: // if the first byte of the text field is in the range "0x01" to "0x05" then the remaining bytes in the text item are coded in accordance with character coding table 01 to 05 respectively, which are given in figures A.2 to A.6 respectively
-			cs_new = ISO8859_5;
-			s += 1;
-			break;
-		case 0x02:
-			cs_new = ISO8859_6;
-			s += 1;
-			break;
-		case 0x03:
-			cs_new = ISO8859_7;
-			s += 1;
-			break;
-		case 0x04:
-			cs_new = ISO8859_8;
-			s += 1;
-			break;
-		case 0x05:
-			cs_new = ISO8859_9;
-			s += 1;
-			break;
-		case 0x10:
-			// if the first byte of the text field has a value "0x10" then the following two bytes carry a 16-bit value (uimsbf) N to indicate that the remaining data of the text field is coded using the character code table specified by ISO Standard 8859, Parts 1 to 9.
-			cs_new = CS_OTHER
-				+ ((unsigned char)s[1] << 8)
-				+  (unsigned char)s[2];
-			s += 3;
-			break;
-		case 0x11: // if the first byte of the text field has a value "0x11" then the ramaining bytes in the text item are coded in pairs in accordance with the Basic Multilingual Plane of ISO/IEC 10646-1
-			cs_new = ISO10646;
-			s += 1;
-			break;
-		case 0x06 ... 0x0F: case 0x12 ... 0x1F: // Values for the first byte of "0x00", "0x06" to "0x0F", and "0x12" to "0x1F" are reserved for future use.
-			fprintf(stderr, "Reserved encoding: %02x\n", *s);
-			return NULL;
-		case 0x00: // empty string
-			return "";
-	} // switch
-
-	if (cs_old != cs_new || cs_old == CS_UNKNOWN) {
+	int i = (int)(unsigned char)s[0];
+	if (encoding[i].handler(cs_new, &s, encoding[i].data))
+		return "";
+	if (strncmp(cs_old, cs_new, 16)) {
 		if (cd) {
 			iconv_close(cd);
 			cd = NULL;
 		} // if
-		switch (cs_new) {
-			case ISO6937:
-				cd = iconv_open("UCS2", iso6937_encoding);
-				break;
-			case ISO8859_5:
-				cd = iconv_open("UCS2", "ISO8859-5");
-				break;
-			case ISO8859_6:
-				cd = iconv_open("UCS2", "ISO8859-6");
-				break;
-			case ISO8859_7:
-				cd = iconv_open("UCS2", "ISO8859-7");
-				break;
-			case ISO8859_8:
-				cd = iconv_open("UCS2", "ISO8859-8");
-				break;
-			case ISO8859_9:
-				cd = iconv_open("UCS2", "ISO8859-9");
-				break;
-			case ISO10646:
-				cd = iconv_open("UCS2", "ISO-10646/UTF8");
-				break;
-			default: {
-				char from[14];
-				int i = cs_new - CS_OTHER;
-				snprintf(from, sizeof(from), "ISO8859-%d", i);
-				cd = iconv_open("UCS2", from);
-				 }
-		} // switch
-		cs_old = cs_new;
+		cd = iconv_open("UCS-2", cs_new);
+		if (cd == (iconv_t)-1) {
+			fprintf(stderr, "iconv_open() failed: %s\n", strerror(errno));
+			exit(1);
+		} // if
+		strncpy(cs_old, cs_new, 16);
 	} // if
 
 	char *inbuf = (char *)s;
