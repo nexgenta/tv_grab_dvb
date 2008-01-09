@@ -404,6 +404,12 @@ void parseRatingDescription(void *data) {
 	}
 } /*}}}*/
 
+/* Parse 0x5F Private Data Specifier. {{{ */
+int parsePrivateDataSpecifier(void *data) {
+	assert(GetDescriptorTag(data) == 0x5F);
+	return GetPrivateDataSpecifier(data);
+} /*}}}*/
+
 /* Parse Descriptor. {{{
  * Tags should be output in this order:
 
@@ -413,7 +419,7 @@ void parseRatingDescription(void *data) {
 'new', 'subtitles', 'rating', 'star-rating'
 */
 static void parseDescription(void *data, size_t len) {
-	int round;
+	int round, pds = 0;
 
 	for (round = 0; round < 6; round++) {
 		int seen = 0; // no language/video/audio/subtitle seen in this round
@@ -441,6 +447,8 @@ static void parseDescription(void *data, size_t len) {
 					else if (round == 5)
 						parseComponentDescription(desc, SUBTITLE, &seen);
 					break;
+				case 0x53: // CA Identifier Descriptor
+					break;
 				case 0x54: // content desc [category]
 					if (round == 1)
 						parseContentDescription(desc);
@@ -450,19 +458,22 @@ static void parseDescription(void *data, size_t len) {
 						parseRatingDescription(desc);
 					break;
 				case 0x5f: // Private Data Specifier
+					pds = parsePrivateDataSpecifier(desc);
 					break;
 				case 0x64: // Data broadcast desc - Text Desc for Data components
 					break;
 				case 0x69: // Programm Identification Label
 					break;
+				case 0x81: // TODO ???
+					if (pds == 5) // ARD_ZDF_ORF
+						break;
 				case 0x82: // VPS (ARD, ZDF, ORF)
-					// TODO: <programme @vps-start="???">
-					break;
+					if (pds == 5) // ARD_ZDF_ORF
+						// TODO: <programme @vps-start="???">
+						break;
 				case 0x4F: // Time Shifted Event
 				case 0x52: // Stream Identifier Descriptor
-				case 0x53: // CA Identifier Descriptor
 				case 0x5E: // Multi Lingual Component Descriptor
-				case 0x81: // FIXME ???
 				case 0x83: // Logical Channel Descriptor (some kind of news-ticker on ARD-MHP-Data?)
 				case 0x84: // Preferred Name List Descriptor
 				case 0x85: // Preferred Name Identifier Descriptor
