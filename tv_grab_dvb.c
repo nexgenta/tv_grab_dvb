@@ -370,23 +370,16 @@ static void parseContentDescription(void *data) {
 			set_bit(once, c1);
 			char *c = lookup(description_table, c1);
 			if (c)
-				printf("\t<category>%s</category>\n", c);
+				if (c[0])
+					printf("\t<category>%s</category>\n", c);
 #ifdef CATEGORY_UNKNOWN
+				else
+					printf("\t<!--category>%s %02X %02X</category-->\n", c+1, c1, c2);
 			else
-				printf("\t<!--category>%02X</category-->\n", c1);
+				printf("\t<!--category>%02X %02X</category-->\n", c1, c2);
 #endif
 		}
 		// This is weird in the uk, they use user but not content, and almost the same values
-		if (c2 > 0 && !get_bit(once, c2)) {
-			set_bit(once, c2);
-			char *c = lookup(description_table, c2);
-			if (c)
-				printf("\t<category>%s</category>\n", c);
-#ifdef CATEGORY_UNKNOWN
-			else
-				printf("\t<!--category>%02X</category-->\n", c2);
-#endif
-		}
 	}
 } /*}}}*/
 
@@ -539,7 +532,6 @@ static void parseEIT(void *data, size_t len) {
 			channels = nc;
 		}
 
-		status();
 		/* we have more data, refresh alarm */
 		if (timeout) alarm(timeout);
 
@@ -564,7 +556,6 @@ static void parseEIT(void *data, size_t len) {
 		// basic bad date check. if the program ends before this time yesterday, or two weeks from today, forget it.
 		if ((difftime(stop_time, now) < -24*60*60) || (difftime(now, stop_time) > 14*24*60*60) ) {
 			invalid_date_count++;
-			status();
 			if (ignore_bad_dates)
 				return;
 		}
