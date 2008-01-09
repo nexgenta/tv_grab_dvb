@@ -11,10 +11,30 @@ tv_grab_dvb:	tv_grab_dvb.o crc32.o lookup.o dvb_info_tables.o $(dvb_text) langid
 tv_grab_dvb.o:  tv_grab_dvb.h si_tables.h
 lookup.o:	tv_grab_dvb.h
 dvb_info_tables.o:	tv_grab_dvb.h
-
 langidents.o:	langidents.c tv_grab_dvb.h
+
+# langidents.c is generated
+empty:=
+space:= $(empty) $(empty)
+findxslt=$(firstword $(wildcard $(addsuffix /$(1),$(subst :,$(space),$(PATH)))))
+XSLTPROC := $(call findxslt,xsltproc)
+XALAN := $(call findxslt,xalan)
+
+ifeq ($(shell test -f iso_639.tab ; echo $$?),0)
 langidents.c: iso_639.tab iso_639.awk
 	awk -f iso_639.awk $< > $@
+else ifeq ($(shell test -f iso_639.xml ; echo $$?),0)
+langidents.c: iso_639.xml iso_639.xsl
+ifneq ($(XSLTPROC),)
+	xsltproc iso_639.xsl $< > $@
+else ifneq ($(XALAN),)
+	xalan -xsl iso_639.xsl -in $< -out $@
+else
+	$(error Missing XSLT transformer)
+endif
+else
+	$(error Missing iso_639 tables)
+endif
 
 tags: $(wildcard *.[ch])
 	ctags $^
