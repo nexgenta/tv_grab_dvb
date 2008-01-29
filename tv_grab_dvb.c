@@ -80,7 +80,8 @@ static struct chninfo *channels;
 
 /* Print usage information. {{{ */
 static void usage() {
-	fprintf(stderr, "Usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout] [-o offset] [-i file] -f file | > dump.xmltv\n\n"
+	fprintf(stderr, "Usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout]\n"
+		"\t[-e encoding] [-o offset] [-i file] [-f file]\n\n"
 		"\t-i file - Read from file/device instead of %s\n"
 		"\t-f file - Write output to file instead of stdout\n"
 		"\t-t timeout - Stop after timeout seconds of no new data\n"
@@ -143,7 +144,7 @@ static int do_options(int arg_count, char **arg_strings) {
 		case 'o':
 			time_offset = atoi(optarg);
 			if ((time_offset < -12) || (time_offset > 12)) {
-				fprintf(stderr, "%s: Invalid time offset", ProgName);
+				fprintf(stderr, "%s: Invalid time offset\n", ProgName);
 				usage();
 			}
 			break;
@@ -687,7 +688,7 @@ static int openInput(void) {
 				found = true;
 				break;
 			}
-			fprintf(stderr, "error polling for data");
+			fprintf(stderr, "error polling for data\n");
 			close(fd_epg);
 			return -1;
 		}
@@ -716,7 +717,7 @@ static void readZapInfo() {
 	FILE *fd_zap;
 	char buf[256];
 	if ((fd_zap = fopen(CHANNELS_CONF, "r")) == NULL) {
-		fprintf(stderr, "No [cst]zap channels.conf to produce channel info");
+		fprintf(stderr, "No [cst]zap channels.conf to produce channel info\n");
 		return;
 	}
 
@@ -743,7 +744,12 @@ static void readZapInfo() {
 
 /* Main function. {{{ */
 int main(int argc, char **argv) {
-	ProgName = argv[0];
+	/* Remove path from command */
+	ProgName = strrchr(argv[0], '/');
+	if (ProgName == NULL)
+		ProgName = argv[0];
+	else
+		ProgName++;
 	/* Process command line arguments */
 	do_options(argc, argv);
 	/* Load lookup tables. */
