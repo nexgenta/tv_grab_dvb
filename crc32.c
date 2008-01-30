@@ -56,6 +56,6 @@ uint32_t _dvb_crc32(const uint8_t *data, size_t len)
 
         for (i = 0; i < len; i++)
                 crc = (crc << 8) ^ crc_table[((crc >> 24) ^ *data++) & 0xff];
- 
+
         return crc;
 }
