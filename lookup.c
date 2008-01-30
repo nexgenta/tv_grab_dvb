@@ -56,7 +56,7 @@ int main(int argc; char **argv;) {
 	if (load_lookup(&t, "chanidents") != 0)
 		return -1;
 	if (argc > 1)
-		printf("%s\n", lookup(t, atoi(argv[1]));
+		printf("%s\n", lookup(t, atoi(argv[1])));
 	return 0;
 }
 #endif
