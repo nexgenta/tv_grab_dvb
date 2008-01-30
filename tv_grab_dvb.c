@@ -617,9 +617,8 @@ static void readEventTables(void) {
 			/* data or length is wrong. skip bytewise. */
 			//l = 1; // FIXME
 			crcerr_count++;
-		} else {
+		} else
 			parseEIT(bhead, l);
-		}
 		status();
 		/* remove packet */
 		n -= l;
@@ -757,7 +756,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Error loading %s, continuing.\n", CHANIDENTS);
 	fprintf(stderr, "\n");
 
-	printf("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n");
+	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
 	printf("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n");
 	printf("<tv generator-info-name=\"dvb-epg-gen\">\n");
 	if (openInput() != 0) {

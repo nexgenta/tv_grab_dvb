@@ -6,8 +6,8 @@
 #include <iconv.h>
 
 #define MAX 1024
-static char buf[MAX * 2], result[MAX * 10];
-static const char HEX[16] = "0123456789ABCDEF";
+static char buf[MAX * 6]; /* UTF-8 needs up to 6 bytes */
+static char result[MAX * 6]; /* xml-ification needs up to 6 bytes */
 
 /* The spec says ISO-6937, but many stations get it wrong and use ISO-8859-1. */
 char *iso6937_encoding = "ISO6937";
@@ -53,7 +53,7 @@ static const struct encoding {
 	[0x0F] = {encoding_reserved, NULL},
 	[0x10] = {encoding_variable, "ISO-8859-%d"},
 	[0x11] = {encoding_fixed, "ISO-10646/UCS2"}, // FIXME: UCS-2 LE/BE ???
-	[0x12] = {encoding_fixed, "KSC_5601"},
+	[0x12] = {encoding_fixed, "KSC_5601"}, // TODO needs newer iconv
 	[0x13] = {encoding_fixed, "GB_2312-80"},
 	[0x14] = {encoding_fixed, "BIG5"},
 	[0x15] = {encoding_fixed, "ISO-10646/UTF8"},
@@ -85,7 +85,7 @@ char *xmlify(const char *s) {
 			iconv_close(cd);
 			cd = NULL;
 		} // if
-		cd = iconv_open("UCS-2", cs_new);
+		cd = iconv_open("UTF-8", cs_new);
 		if (cd == (iconv_t)-1) {
 			fprintf(stderr, "iconv_open() failed: %s\n", strerror(errno));
 			exit(1);
@@ -96,22 +96,28 @@ char *xmlify(const char *s) {
 	char *inbuf = (char *)s;
 	size_t inbytesleft = strlen(s);
 	char *outbuf = (char *)buf;
-	size_t outbytesleft = MAX * 2;
+	size_t outbytesleft = sizeof(buf);
 	size_t ret = iconv(cd, &inbuf, &inbytesleft, &outbuf, &outbytesleft);
 	// FIXME: handle errors
 
+	// Luckiely '&<> are single byte character sequences in UTF-8 and no
+	// other character will have a UTF-8 sequence containing these
+	// patterns. Because the MSB is set in all multi-byte sequences, we can
+	// simply scan for '&<> and don't have to parse UTF-8 sequences.
+
 	char *b = buf, *r = result;
-	for ( ; b < outbuf; b += 2) {
-		int i = (unsigned char)b[0] + (unsigned char)b[1] * 256;
-		switch (i) {
-			case '\t':
-			case '\n':
-			case ' ' ... '%': // &
-			case '\'' ... ';': // <
-			case '=': // >
-			case '?' ... 0x7E:
-				*r++ = (char)i;
+	for ( ; b < outbuf; b++)
+		switch (*b) {
+#if 0 // only needed for attributes
+			case '"':
+				*r++ = '&';
+				*r++ = 'q';
+				*r++ = 'u';
+				*r++ = 'o';
+				*r++ = 't';
+				*r++ = ';';
 				break;
+#endif
 			case '&':
 				*r++ = '&';
 				*r++ = 'a';
@@ -134,19 +140,11 @@ char *xmlify(const char *s) {
 			case 0x0000 ... 0x0008:
 			case 0x000B ... 0x001F:
 			case 0x007F:
-				fprintf(stderr, "Illegal char %04x\n", i);
+				fprintf(stderr, "Forbidden char %02x\n", *b);
 			default:
-				*r++ = '&';
-				*r++ = '#';
-				*r++ = 'x';
-				if (i & 0xF000) *r++ = HEX[(i >> 12) & 0xF];
-				if (i & 0xFF00) *r++ = HEX[(i >>  8) & 0xF];
-				if (i & 0xFFF0) *r++ = HEX[(i >>  4) & 0xF];
-				*r++ = HEX[(i >>  0) & 0xF];
-				*r++ = ';';
+				*r++ = *b;
 				break;
 		} // switch
-	} // for
 
 	*r = '\0';
 	return result;
