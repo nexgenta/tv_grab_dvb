@@ -214,25 +214,33 @@ static char *xmllang(u_char *l) {
 } /*}}}*/
 
 /* Parse 0x4D Short Event Descriptor. {{{ */
-static void parseEventDescription(void *data) {
+enum ER { TITLE, SUB_TITLE };
+static void parseEventDescription(void *data, enum ER round) {
 	assert(GetDescriptorTag(data) == 0x4D);
 	struct descr_short_event *evtdesc = data;
 	char evt[256];
 	char dsc[256];
 
 	int evtlen = evtdesc->event_name_length;
-	strncpy(evt, (char *)&evtdesc->data, evtlen);
-	evt[evtlen] = '\0';
+	if (round == TITLE) {
+		if (!evtlen)
+			return;
+		strncpy(evt, (char *)&evtdesc->data, evtlen);
+		evt[evtlen] = '\0';
+		printf("\t<title lang=\"%s\">%s</title>\n", xmllang(&evtdesc->lang_code1), xmlify(evt));
+		return;
+	}
 
-	int dsclen = evtdesc->data[evtlen];
-	strncpy(dsc, (char *)&evtdesc->data[evtlen+1], dsclen);
-	dsc[dsclen] = '\0';
+	if (round == SUB_TITLE) {
+		int dsclen = evtdesc->data[evtlen];
+		strncpy(dsc, (char *)&evtdesc->data[evtlen+1], dsclen);
+		dsc[dsclen] = '\0';
 
-	printf("\t<title lang=\"%s\">%s</title>\n", xmllang(&evtdesc->lang_code1), xmlify(evt));
-	if (*dsc) {
-		char *d = xmlify(dsc);
-		if (d && *d)
-			printf("\t<sub-title lang=\"%s\">%s</sub-title>\n", xmllang(&evtdesc->lang_code1), d);
+		if (*dsc) {
+			char *d = xmlify(dsc);
+			if (d && *d)
+				printf("\t<sub-title lang=\"%s\">%s</sub-title>\n", xmllang(&evtdesc->lang_code1), d);
+		}
 	}
 } /*}}}*/
 
@@ -285,7 +293,7 @@ void parseLongEventDescription(void *data) {
    audio information.  seen is a pointer to a counter to ensure we
    only output the first one of each (XMLTV can't cope with more than
    one) */
-enum CR { LANGUAGE, VIDEO, AUDIO, SUBTITLE };
+enum CR { LANGUAGE, VIDEO, AUDIO, SUBTITLES };
 static void parseComponentDescription(void *data, enum CR round, int *seen) {
 	assert(GetDescriptorTag(data) == 0x50);
 	struct descr_component *dc = data;
@@ -322,7 +330,7 @@ static void parseComponentDescription(void *data, enum CR round, int *seen) {
 			}
 			break;
 		case 0x03: // Teletext Info
-			if (round == SUBTITLE) {
+			if (round == SUBTITLES) {
 			// FIXME: is there a suitable XMLTV output for this?
 			// if ((dc->component_type)&0x10) //subtitles
 			// if ((dc->component_type)&0x20) //subtitles for hard of hearing
@@ -366,7 +374,9 @@ static void parseContentDescription(void *data) {
 	for (p = &dc->data; p < data + dc->descriptor_length; p += NIBBLE_CONTENT_LEN) {
 		struct nibble_content *nc = p;
 		int c1 = (nc->content_nibble_level_1 << 4) + nc->content_nibble_level_2;
+#ifdef CATEGORY_UNKNOWN
 		int c2 = (nc->user_nibble_1 << 4) + nc->user_nibble_2;
+#endif
 		if (c1 > 0 && !get_bit(once, c1)) {
 			set_bit(once, c1);
 			char *c = lookup(description_table, c1);
@@ -422,40 +432,44 @@ int parsePrivateDataSpecifier(void *data) {
 static void parseDescription(void *data, size_t len) {
 	int round, pds = 0;
 
-	for (round = 0; round < 6; round++) {
-		int seen = 0; // no language/video/audio/subtitle seen in this round
+	for (round = 0; round < 8; round++) {
+		int seen = 0; // no title/language/video/audio/subtitles seen in this round
 		void *p;
 		for (p = data; p < data + len; p += DESCR_GEN_LEN + GetDescriptorLength(p)) {
 			struct descr_gen *desc = p;
 			switch (GetDescriptorTag(desc)) {
 				case 0:
 					break;
-				case 0x4D: //short evt desc, [title] [desc]
-					if (round == 0)
-						parseEventDescription(desc);
+				case 0x4D: //short evt desc, [title] [sub-title]
+					// there can be multiple language versions of these
+					if (round == 0) {
+						parseEventDescription(desc, TITLE);
+					}
+					else if (round == 1)
+						parseEventDescription(desc, SUB_TITLE);
 					break;
-				case 0x4E: //long evt descriptor
-					if (round == 0)
+				case 0x4E: //long evt descriptor [desc]
+					if (round == 2)
 						parseLongEventDescription(desc);
 					break;
-				case 0x50: //component desc [video] [audio]
-					if (round == 2)
+				case 0x50: //component desc [language] [video] [audio] [subtitles]
+					if (round == 4)
 						parseComponentDescription(desc, LANGUAGE, &seen);
-					else if (round == 3)
-						parseComponentDescription(desc, VIDEO, &seen);
-					else if (round == 4)
-						parseComponentDescription(desc, AUDIO, &seen);
 					else if (round == 5)
-						parseComponentDescription(desc, SUBTITLE, &seen);
+						parseComponentDescription(desc, VIDEO, &seen);
+					else if (round == 6)
+						parseComponentDescription(desc, AUDIO, &seen);
+					else if (round == 7)
+						parseComponentDescription(desc, SUBTITLES, &seen);
 					break;
 				case 0x53: // CA Identifier Descriptor
 					break;
 				case 0x54: // content desc [category]
-					if (round == 1)
+					if (round == 3)
 						parseContentDescription(desc);
 					break;
-				case 0x55: // Parental Rating Descriptor
-					if (round == 5)
+				case 0x55: // Parental Rating Descriptor [rating]
+					if (round == 7)
 						parseRatingDescription(desc);
 					break;
 				case 0x5f: // Private Data Specifier
@@ -485,6 +499,20 @@ static void parseDescription(void *data, size_t len) {
 			}
 		}
 	}
+} /*}}}*/
+
+/* Check that program has at least a title as is required by xmltv.dtd. {{{ */
+static bool validateDescription(void *data, size_t len) {
+	void *p;
+	for (p = data; p < data + len; p += DESCR_GEN_LEN + GetDescriptorLength(p)) {
+		struct descr_gen *desc = p;
+		if (GetDescriptorTag(desc) == 0x4D) {
+			struct descr_short_event *evtdesc = p;
+			// make sure that title isn't empty
+			if (evtdesc->event_name_length) return true;
+		}
+	}
+	return false;
 } /*}}}*/
 
 /* Use the routine specified in ETSI EN 300 468 V1.4.1, {{{
@@ -572,6 +600,11 @@ static void parseEIT(void *data, size_t len) {
 				return;
 		}
 
+		// a program must have a title that isn't empty
+		if (!validateDescription(&evt->data, GetEITDescriptorsLoopLength(evt))) {
+			return;
+		}
+
 		programme_count++;
 
 		printf("<programme channel=\"%s\" ", get_channelident(HILO(e->service_id)));
@@ -591,7 +624,8 @@ static void parseEIT(void *data, size_t len) {
 
 /* Exit hook: close xml tags. {{{ */
 static void finish_up() {
-	fprintf(stderr, "\n");
+	if (!silent)
+		fprintf(stderr, "\n");
 	printf("</tv>\n");
 	exit(0);
 } /*}}}*/
@@ -732,9 +766,11 @@ static void readZapInfo() {
 			}
 		if (id && *id) {
 			int chanid = atoi(id);
-			printf("<channel id=\"%s\">\n", get_channelident(chanid));
-			printf("\t<display-name>%s</display-name>\n", xmlify(buf));
-			printf("</channel>\n");
+            if (chanid) { 
+                printf("<channel id=\"%s\">\n", get_channelident(chanid));
+                printf("\t<display-name>%s</display-name>\n", xmlify(buf));
+                printf("</channel>\n");
+            }
 		}
 	}
 
@@ -752,9 +788,10 @@ int main(int argc, char **argv) {
 	/* Process command line arguments */
 	do_options(argc, argv);
 	/* Load lookup tables. */
-	if (load_lookup(&channelid_table, CHANIDENTS))
+	if (use_chanidents && load_lookup(&channelid_table, CHANIDENTS))
 		fprintf(stderr, "Error loading %s, continuing.\n", CHANIDENTS);
-	fprintf(stderr, "\n");
+	if (!silent)
+		fprintf(stderr, "\n");
 
 	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
 	printf("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n");

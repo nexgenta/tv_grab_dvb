@@ -8,6 +8,9 @@
 	* Translate 3 letter languages to 2 letter language IDs
 	* Improved efficiency: Cache files in memory.
 
+10/03/2008  Tero Pelander <tpeland_tkukoulu_fi>
+    * Add -s option to make program silent
+	* make the output obey xmltv.dtd 
 
 ==========================================================================
 		 tv_grab_dvb 0.9 Released 07/09/2004
