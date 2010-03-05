@@ -1542,6 +1542,30 @@ typedef struct descr_announcement_support {
 #define DESCR_ANNOUNCEMENT_SUPPORT_LEN sizeof (descr_announcement_support_t)
 #define CastAnnouncementSupportDescriptor(x) ((descr_announcement_support_t *)(x))
 
+/* 0x76 content_identifier_descriptor */
+typedef struct descr_content_identifier {
+   u_char descriptor_tag                         /*:8*/;
+   u_char descriptor_length                      /*:8*/;
+   u_char data[];
+} descr_content_identifier_t;
+
+typedef struct descr_content_identifier_crid {
+#if BYTE_ORDER == BIG_ENDIAN
+   u_char crid_type                             :6;
+   u_char crid_location                         :2;
+#else
+   u_char crid_location                         :2;
+   u_char crid_type                             :6;
+#endif
+   u_char crid_ref_data[];
+} descr_content_identifier_crid_t;
+
+typedef struct descr_content_identifier_crid_local {
+   u_char crid_length                           /*:8*/;
+   u_char crid_byte[];
+} descr_content_identifier_crid_local_t;
+
+
 /* 0x80 custom_category_descriptor TODO */
 typedef struct descr_custom_category {
    u_char descriptor_tag                         /*:8*/;

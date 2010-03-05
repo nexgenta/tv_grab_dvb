@@ -21,6 +21,7 @@ extern int load_lookup(struct lookup_table **l, const char *file);
 extern const struct lookup_table description_table[];
 extern const struct lookup_table aspect_table[];
 extern const struct lookup_table audio_table[];
+extern const struct lookup_table crid_type_table[];
 
 /* langidents.c */
 extern const struct lookup_table languageid_table[];

@@ -421,6 +421,50 @@ int parsePrivateDataSpecifier(void *data) {
 	return GetPrivateDataSpecifier(data);
 } /*}}}*/
 
+/* Parse 0x76 Content Identifier Descriptor. {{{ */
+/* See ETSI TS 102 323, section 12 */
+void parseContentIdentifierDescription(void *data) {
+	assert(GetDescriptorTag(data) == 0x76);
+	struct descr_content_identifier *ci = data;
+	void *p;
+	for (p = &ci->data; p < data + ci->descriptor_length; /* at end */) {
+		struct descr_content_identifier_crid *crid = p;
+		struct descr_content_identifier_crid_local *crid_data;
+
+		int crid_length = 3;
+
+		char type_buf[32];
+		char *type;
+		char buf[256];
+
+		type = lookup(crid_type_table, crid->crid_type);
+		if (type == NULL)
+		{
+			type = type_buf;
+			sprintf(type_buf, "0x%2x", crid->crid_type);
+		}
+
+		switch (crid->crid_location)
+		{
+		case 0x00: /* Carried explicitly within descriptor */
+			crid_data = (descr_content_identifier_crid_local_t *)&crid->crid_ref_data;
+			int cridlen = crid_data->crid_length;
+			strncpy(buf, (char *)&crid_data->crid_byte, cridlen);
+			buf[cridlen] = '\0';
+
+			printf("\t<crid type='%s'>%s</crid>\n", type, xmlify(buf));
+			crid_length = 2 + crid_data->crid_length;
+			break;
+		case 0x01: /* Carried in Content Identifier Table (CIT) */
+			break;
+		default:
+			break;
+		}
+
+		p += crid_length;
+	}
+} /*}}}*/
+
 /* Parse Descriptor. {{{
  * Tags should be output in this order:
 
@@ -493,6 +537,11 @@ static void parseDescription(void *data, size_t len) {
 				case 0x84: // Preferred Name List Descriptor
 				case 0x85: // Preferred Name Identifier Descriptor
 				case 0x86: // Eacem Stream Identifier Descriptor
+					break;
+				case 0x76: // Content identifier descriptor
+					if (round == 5)
+						parseContentIdentifierDescription(desc);
+					break;
 				default:
 					if (round == 0)
 						printf("\t<!--Unknown_Please_Report ID=\"%x\" Len=\"%d\" -->\n", GetDescriptorTag(desc), GetDescriptorLength(desc));
@@ -808,3 +857,4 @@ int main(int argc, char **argv) {
 	return 0;
 } /*}}}*/
 // vim: foldmethod=marker ts=4 sw=4
+

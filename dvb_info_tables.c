@@ -300,3 +300,13 @@ const struct lookup_table audio_table[] = {
         {{0x41}, "x-hardofhearing"}, // hard hearing sound
 	{ {-1}, NULL }
 };
+
+const struct lookup_table crid_type_table[] = {
+	{{0x00}, "none" },
+	{{0x01}, "item" },
+	{{0x02}, "series" },
+	{{0x03}, "recommendation" },
+	{{0x31}, "item" },     // UK only? -- I can't find specs that use these
+	{{0x32}, "series" },   // UK only?
+	{ {-1}, NULL }
+};
