@@ -225,7 +225,8 @@ static void parseEventDescription(void *data, enum ER round) {
 	if (round == TITLE) {
 		if (!evtlen)
 			return;
-		strncpy(evt, (char *)&evtdesc->data, evtlen);
+		assert(evtlen < sizeof(evt));
+		memcpy(evt, (char *)&evtdesc->data, evtlen);
 		evt[evtlen] = '\0';
 		printf("\t<title lang=\"%s\">%s</title>\n", xmllang(&evtdesc->lang_code1), xmlify(evt));
 		return;
@@ -233,7 +234,8 @@ static void parseEventDescription(void *data, enum ER round) {
 
 	if (round == SUB_TITLE) {
 		int dsclen = evtdesc->data[evtlen];
-		strncpy(dsc, (char *)&evtdesc->data[evtlen+1], dsclen);
+		assert(dsclen < sizeof(dsc));
+		memcpy(dsc, (char *)&evtdesc->data[evtlen+1], dsclen);
 		dsc[dsclen] = '\0';
 
 		if (*dsc) {
@@ -260,7 +262,8 @@ void parseLongEventDescription(void *data) {
 		struct item_extended_event *name = p;
 		int name_len = name->item_description_length;
 		assert(p + ITEM_EXTENDED_EVENT_LEN + name_len < data_end);
-		strncpy(dsc, (char *)&name->data, name_len);
+		assert(name_len < sizeof(dsc));
+		memcpy(dsc, (char *)&name->data, name_len);
 		dsc[name_len] = '\0';
 		printf("%s: ", xmlify(dsc));
 
@@ -269,7 +272,8 @@ void parseLongEventDescription(void *data) {
 		struct item_extended_event *value = p;
 		int value_len = value->item_description_length;
 		assert(p + ITEM_EXTENDED_EVENT_LEN + value_len < data_end);
-		strncpy(dsc, (char *)&value->data, value_len);
+		assert(value_len < sizeof(dsc));
+		memcpy(dsc, (char *)&value->data, value_len);
 		dsc[value_len] = '\0';
 		printf("%s; ", xmlify(dsc));
 
@@ -278,7 +282,8 @@ void parseLongEventDescription(void *data) {
 	struct item_extended_event *text = p;
 	int len = text->item_description_length;
 	if (non_empty && len) {
-		strncpy(dsc, (char *)&text->data, len);
+		assert(len < sizeof(dsc));
+		memcpy(dsc, (char *)&text->data, len);
 		dsc[len] = '\0';
 		printf("%s", xmlify(dsc));
 	}
@@ -300,7 +305,8 @@ static void parseComponentDescription(void *data, enum CR round, int *seen) {
 	char buf[256];
 
 	int len = dc->descriptor_length;
-	strncpy(buf, (char *)&dc->data, len);
+	assert(len < sizeof(buf));
+	memcpy(buf, (char *)&dc->data, len);
 	buf[len] = '\0';
 
 	switch (dc->stream_content) {
@@ -449,7 +455,8 @@ void parseContentIdentifierDescription(void *data) {
 		case 0x00: /* Carried explicitly within descriptor */
 			crid_data = (descr_content_identifier_crid_local_t *)&crid->crid_ref_data;
 			int cridlen = crid_data->crid_length;
-			strncpy(buf, (char *)&crid_data->crid_byte, cridlen);
+			assert(cridlen < sizeof(buf));
+			memcpy(buf, (char *)&crid_data->crid_byte, cridlen);
 			buf[cridlen] = '\0';
 
 			printf("\t<crid type='%s'>%s</crid>\n", type, xmlify(buf));
