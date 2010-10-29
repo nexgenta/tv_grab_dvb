@@ -17,7 +17,7 @@ const struct lookup_table languageid_table[] = {
       <xsl:if test="@iso_639_2B_code != @iso_639_2T_code">
         <xsl:text>	{{.c="</xsl:text>
         <xsl:value-of select="@iso_639_2T_code"/>
-        <xsl:text>", "</xsl:text>
+        <xsl:text>"}, "</xsl:text>
         <xsl:value-of select="@iso_639_1_code"/>
         <xsl:text>"},
 </xsl:text>
