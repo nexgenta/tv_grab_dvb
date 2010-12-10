@@ -47,6 +47,7 @@ const char *id = "@(#) $Id$";
 #include "dvb-demux.h"
 #include "si_tables.h"
 #include "tv_grab_dvb.h"
+#include "services.h"
 
 /* FIXME: put these as options */
 #define CHANNELS_CONF "channels.conf"
@@ -68,6 +69,8 @@ bool ignore_bad_dates = true;
 bool ignore_updates = true;
 static bool use_chanidents = false;
 static bool silent = false;
+static int service_scan;
+static time_t start_time;
 
 struct lookup_table *channelid_table;
 struct chninfo *channels;
@@ -75,20 +78,21 @@ struct chninfo *channels;
 /* Print usage information. {{{ */
 static void usage() {
 	fprintf(stderr, "Usage: %s [-d] [-u] [-c] [-n|m|p] [-s] [-t timeout]\n"
-		"\t[-e encoding] [-o offset] [-i file] [-f file]\n\n"
-		"\t-i file - Read from file/device instead of %s\n"
-		"\t-f file - Write output to file instead of stdout\n"
-		"\t-t timeout - Stop after timeout seconds of no new data\n"
-		"\t-o offset  - time offset in hours from -12 to 12\n"
-		"\t-c - Use Channel Identifiers from file 'chanidents'\n"
-		"\t     (rather than sidnumber.dvb.guide)\n"
-		"\t-d - output invalid dates\n"
-		"\t-n - now next info only\n"
-		"\t-m - current multiplex now_next only\n"
-		"\t-p - other multiplex now_next only\n"
-		"\t-s - silent - no status ouput\n"
-		"\t-u - output updated info - will result in repeated information\n"
-		"\t-e encoding - Use other than ISO-6937 default encoding\n"
+			"\t[-e encoding] [-o offset] [-i file] [-f file]\n\n"
+			"\t-i file - Read from file/device instead of %s\n"
+			"\t-f file - Write output to file instead of stdout\n"
+			"\t-t timeout - Stop after timeout seconds of no new data\n"
+			"\t-o offset  - time offset in hours from -12 to 12\n"
+			"\t-c - Use Channel Identifiers from file 'chanidents'\n"
+			"\t     (rather than sidnumber.dvb.guide)\n"
+			"\t-d - output invalid dates\n"
+			"\t-n - now next info only\n"
+			"\t-m - current multiplex now_next only\n"
+			"\t-p - other multiplex now_next only\n"
+			"\t-s - silent - no status ouput\n"
+			"\t-u - output updated info - will result in repeated information\n"
+			"\t-e encoding - Use other than ISO-6937 default encoding\n"
+			"\t-S nsecs - Scan for service information for nsecs seconds\n"
 		"\n", ProgName, demux);
 	_exit(1);
 } /*}}}*/
@@ -113,7 +117,7 @@ static int do_options(int arg_count, char **arg_strings) {
 	int fd;
 
 	while (1) {
-		int c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:i:e:", Long_Options, &Option_Index);
+		int c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:i:e:S:", Long_Options, &Option_Index);
 		if (c == EOF)
 			break;
 		switch (c) {
@@ -166,6 +170,13 @@ static int do_options(int arg_count, char **arg_strings) {
 		case 's':
 			silent = true;
 			break;
+		case 'S':
+			service_scan = atoi(optarg);
+			if (0 == service_scan) {
+				fprintf(stderr, "%s: Invalid service scan time\n", ProgName);
+				usage();
+			}
+			break;			
 		case 'e':
 			iso6937_encoding = optarg;
 			break;
@@ -203,8 +214,11 @@ static void finish_up() {
 	exit(0);
 } /*}}}*/
 
+static void dummy_alarm() {
+}
+
 /* Read EIT segments from DVB-demuxer or file. {{{ */
-static void readEventTables(int fd, int (*handler)(void *data, size_t len)) {
+static void readEventTables(int fd, int (*handler)(void *data, size_t len), time_t until) {
 	int r, n = 0;
 	char buf[1<<12], *bhead = buf;
 
@@ -240,7 +254,21 @@ read_more:
 		if (n > 0)
 			memmove(buf, bhead, n);
 		/* fill with fresh data */
-		r = read(fd, buf+n, sizeof(buf)-n);
+		do
+		{
+			r = read(fd, buf+n, sizeof(buf)-n);
+		}
+		while((!until || time(NULL) < until) && r == -1 && errno == EINTR);
+		if(until && time(NULL) >= until)
+		{
+/*			fprintf(stderr, "--- Timer reached --\n"); */
+			break;
+		}
+		if(r == -1)
+		{
+			perror("read error");
+			break;
+		}
 		bhead = buf;
 		n += r;
 	} while (r > 0);
@@ -308,9 +336,12 @@ static int openInput(int pid) {
 			close(fd_epg);
 			return -1;
 		}
-
-		signal(SIGALRM, finish_up);
-		alarm(timeout);
+		
+		if(pid == 0x0012)
+		{
+			signal(SIGALRM, finish_up);
+			alarm(timeout);
+		}
 	} else {
 		// disable alarm timeout for normal files
 		timeout = 0;
@@ -368,17 +399,24 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Error loading %s, continuing.\n", CHANIDENTS);
 	if (!silent)
 		fprintf(stderr, "\n");
-
-	if ((fd = openInput(0x0011)) < 0) {
-		fprintf(stderr, "Unable to open demultiplex interface to read SDT\n");
-		exit(1);
-	}
-	readEventTables(fd, parse_dvb_si);
-	if(fd)
+	
+	start_time = time(NULL);
+	if(service_scan)
 	{
-		close(fd);
+		if ((fd = openInput(0x0011)) < 0) {
+			fprintf(stderr, "Unable to open demultiplex interface to read SDT\n");
+			exit(1);
+		}
+		signal(SIGALRM, dummy_alarm);
+		alarm(service_scan);
+		readEventTables(fd, parse_dvb_si, start_time + service_scan);
+		if(fd)
+		{
+			close(fd);
+		}
+		service_debug_dump();
+		return 0;	
 	}
-	return 0;
 	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
 	printf("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n");
 	printf("<tv generator-info-name=\"dvb-epg-gen\">\n");
@@ -388,7 +426,7 @@ int main(int argc, char **argv) {
 	}
 
 	readZapInfo();
-	readEventTables(fd, parseEIT);
+	readEventTables(fd, parseEIT, 0);
 	if(fd)
 	{
 		close(fd);
