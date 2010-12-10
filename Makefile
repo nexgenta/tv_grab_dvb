@@ -7,11 +7,14 @@ CFLAGS=-Wall -O0 -g
 dvb_text := dvb_text.o
 dvb_text := dvb_text_iconv.o
 
-tv_grab_dvb:	tv_grab_dvb.o crc32.o lookup.o dvb_info_tables.o $(dvb_text) langidents.o
-tv_grab_dvb.o:  tv_grab_dvb.h si_tables.h
+tv_grab_dvb:	dvb-demux.o dvb-eit.o dvb-si.o tv_grab_dvb.o crc32.o lookup.o dvb_info_tables.o $(dvb_text) langidents.o
+tv_grab_dvb.o:  tv_grab_dvb.h si_tables.h dvb-demux.h
 lookup.o:	tv_grab_dvb.h
 dvb_info_tables.o:	tv_grab_dvb.h
 langidents.o:	langidents.c tv_grab_dvb.h
+dvb-demux.o: dvb-demux.c dvb-demux.h
+dvb-eit.o: dvb-eit.c si_tables.h tv_grab_dvb.h
+dvb-si.o: dvb-si.c si_tables.h
 
 # langidents.c is generated
 empty:=

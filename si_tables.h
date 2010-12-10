@@ -382,6 +382,7 @@ typedef struct sdt {
    u_char original_network_id_hi                 /*:8*/;
    u_char original_network_id_lo                 /*:8*/;
    u_char                                        :8;
+   u_char data[];
 } sdt_t;
 #define SDT_LEN sizeof (sdt_t)
 #define GetSDTTransportStreamId(x) HILO(((sdt_t *)x)->transport_stream_id)
@@ -1541,6 +1542,13 @@ typedef struct descr_announcement_support {
 } descr_announcement_support_t;
 #define DESCR_ANNOUNCEMENT_SUPPORT_LEN sizeof (descr_announcement_support_t)
 #define CastAnnouncementSupportDescriptor(x) ((descr_announcement_support_t *)(x))
+
+/* 0x73 default_authority_descriptor */
+typedef struct default_authority {
+	u_char descriptor_tag;
+	u_char descriptor_length;
+	u_char data[];
+} descr_default_authority_t;
 
 /* 0x76 content_identifier_descriptor */
 typedef struct descr_content_identifier {

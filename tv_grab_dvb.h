@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 /* lookup.c */
 union lookup_key {
@@ -32,5 +33,32 @@ extern uint32_t _dvb_crc32(const uint8_t *data, size_t len);
 /* dvb_text.c */
 extern char *xmlify(const char *s);
 extern char *iso6937_encoding;
+
+/* tv_grab_dvb.c */
+typedef struct chninfo {
+	struct chninfo *next;
+	int sid;
+	int eid;
+	int ver;
+} chninfo_t;
+
+extern int timeout;
+extern int programme_count;
+extern int update_count;
+extern int time_offset;
+extern int invalid_date_count;
+extern bool ignore_bad_dates;
+extern bool ignore_updates;
+
+extern struct lookup_table *channelid_table;
+extern struct chninfo *channels;
+
+char *get_channelident(int chanid);
+
+/* dvb-eit.c */
+extern int parseEIT(void *data, size_t len);
+
+/* dvb-si.c */
+extern int parse_dvb_si(void *data, size_t len);
 
 #endif
