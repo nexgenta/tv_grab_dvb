@@ -43,11 +43,10 @@ const char *id = "@(#) $Id$";
 #include <stdbool.h>
 #include <assert.h>
 
-#include <linux/dvb/dmx.h>
-#include "dvb-demux.h"
-#include "si_tables.h"
+#include "dvb/dvb.h"
 #include "tv_grab_dvb.h"
-#include "services.h"
+#include "xmltv.h"
+#include "tvanytime.h"
 
 /* FIXME: put these as options */
 #define CHANNELS_CONF "channels.conf"
@@ -70,7 +69,8 @@ bool ignore_updates = true;
 static bool use_chanidents = false;
 static bool silent = false;
 static int service_scan;
-static time_t start_time;
+static int halt_after_service_scan;
+static int generate_atom;
 
 struct lookup_table *channelid_table;
 struct chninfo *channels;
@@ -93,6 +93,9 @@ static void usage() {
 			"\t-u - output updated info - will result in repeated information\n"
 			"\t-e encoding - Use other than ISO-6937 default encoding\n"
 			"\t-S nsecs - Scan for service information for nsecs seconds\n"
+			"\t-H - halt after performing service scan\n"
+			"\t-a - generate an Atom feed instead of XMLTV\n"
+			"\t-A - generate an Atom feed per service in current directory\n"
 		"\n", ProgName, demux);
 	_exit(1);
 } /*}}}*/
@@ -117,7 +120,7 @@ static int do_options(int arg_count, char **arg_strings) {
 	int fd;
 
 	while (1) {
-		int c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:i:e:S:", Long_Options, &Option_Index);
+		int c = getopt_long(arg_count, arg_strings, "udscmpnht:o:f:i:e:S:HaA", Long_Options, &Option_Index);
 		if (c == EOF)
 			break;
 		switch (c) {
@@ -180,6 +183,15 @@ static int do_options(int arg_count, char **arg_strings) {
 		case 'e':
 			iso6937_encoding = optarg;
 			break;
+		case 'H':
+			halt_after_service_scan = 1;
+			break;
+		case 'a':
+			generate_atom = 1;
+			break;
+		case 'A':
+			generate_atom = 2;
+			break;
 		case 'h':
 		case '?':
 			usage();
@@ -218,18 +230,26 @@ static void dummy_alarm() {
 }
 
 /* Read EIT segments from DVB-demuxer or file. {{{ */
-static void readEventTables(int fd, int (*handler)(void *data, size_t len), time_t until) {
+static void readEventTables(int fd, void *handler, time_t until, dvb_callbacks_t *callbacks) {
 	int r, n = 0;
 	char buf[1<<12], *bhead = buf;
-
+	int (*handlerfn)(void *data, size_t len, dvb_callbacks_t *callbacks);
+	
+	handlerfn = handler;
 	/* The dvb demultiplexer simply outputs individual whole packets (good),
 	 * but reading captured data from a file needs re-chunking. (bad). */
 	do {
 		if (n < sizeof(struct si_tab))
+		{
+			fprintf(stderr, "Table is too small\n");	   
 			goto read_more;
+		}
 		struct si_tab *tab = (struct si_tab *)bhead;
-		if (GetTableId(tab) == 0)
+/*		if (GetTableId(tab) == 0)
+		{
+			fprintf(stderr, "Table ID = 0x%02x\n", GetTableId(tab));
 			goto read_more;
+			}*/
 		size_t l = sizeof(struct si_tab) + GetSectionLength(tab);
 		if (n < l)
 			goto read_more;
@@ -239,7 +259,8 @@ static void readEventTables(int fd, int (*handler)(void *data, size_t len), time
 			//l = 1; // FIXME
 			crcerr_count++;
 		} else {
-			if(handler(bhead, l) != 0)
+			fprintf(stderr, "calling handler\n");
+			if(handlerfn(bhead, l, callbacks) != 0)
 			{
 				break;
 			}
@@ -258,10 +279,10 @@ read_more:
 		{
 			r = read(fd, buf+n, sizeof(buf)-n);
 		}
-		while((!until || time(NULL) < until) && r == -1 && errno == EINTR);
+		while((!until || time(NULL) < until) && r == -1 && errno == EINTR);		
 		if(until && time(NULL) >= until)
 		{
-/*			fprintf(stderr, "--- Timer reached --\n"); */
+			fprintf(stderr, "--- Timer reached --\n");
 			break;
 		}
 		if(r == -1)
@@ -269,6 +290,7 @@ read_more:
 			perror("read error");
 			break;
 		}
+		fprintf(stderr, "read %d bytes\n", r);
 		bhead = buf;
 		n += r;
 	} while (r > 0);
@@ -297,7 +319,7 @@ static int openInput(int pid) {
 	if (demux == NULL)
 		return 0; // Read from STDIN, which is open al
 
-	if ((fd_epg = dvb_demux_open_path(demux, &sctFilterParams)) < 0) {
+	if ((fd_epg = dvb_demux_open_path(demux, &sctFilterParams, NULL, NULL)) < 0) {
 		perror("fd_epg DEVICE: ");
 		return -1;
 	}
@@ -385,7 +407,11 @@ static void readZapInfo() {
 /* Main function. {{{ */
 int main(int argc, char **argv) {
 	int fd;
+	time_t start_time;
+	tva_options_t tva_opts;
+	dvb_callbacks_t callbacks;
 
+	memset(&callbacks, 0, sizeof(callbacks));
 	/* Remove path from command */
 	ProgName = strrchr(argv[0], '/');
 	if (ProgName == NULL)
@@ -399,34 +425,52 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Error loading %s, continuing.\n", CHANIDENTS);
 	if (!silent)
 		fprintf(stderr, "\n");
-	
-	start_time = time(NULL);
+
+	readZapInfo();
 	if(service_scan)
 	{
-		if ((fd = openInput(0x0011)) < 0) {
+		start_time = time(NULL);
+		if ((fd = openInput(0x0010)) < 0) {
 			fprintf(stderr, "Unable to open demultiplex interface to read SDT\n");
 			exit(1);
 		}
-		signal(SIGALRM, dummy_alarm);
+		signal(SIGALRM, dummy_alarm);		
 		alarm(service_scan);
-		readEventTables(fd, parse_dvb_si, start_time + service_scan);
+		/* Write TV-Anytime */
+		tva_opts.out = fopen("ServiceInformation.xml", "w");
+		tva_preamble_service(&tva_opts);
+		callbacks.service = tva_write_service;
+		callbacks.service_data = &tva_opts;
+		readEventTables(fd, parse_dvb_si, start_time + service_scan, &callbacks);
+		tva_postamble_service(&tva_opts);
+		fclose(tva_opts.out);
 		if(fd)
 		{
 			close(fd);
 		}
-		service_debug_dump();
-		return 0;	
+		if(halt_after_service_scan)
+		{
+			return 0;
+		}	
 	}
-	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-	printf("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n");
-	printf("<tv generator-info-name=\"dvb-epg-gen\">\n");
+	if(generate_atom == 1)
+	{
+		printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+		printf("<feed>\n");
+		printf("\t<title>Event Information Table</title>\n");		
+	}
+	else if(!generate_atom)
+	{
+		printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+		printf("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n");
+		printf("<tv generator-info-name=\"dvb-epg-gen\">\n");
+	}
+
 	if ((fd = openInput(0x0012)) < 0) {
 		fprintf(stderr, "Unable to get event data from multiplex.\n");
 		exit(1);
 	}
-
-	readZapInfo();
-	readEventTables(fd, parseEIT, 0);
+/*	readEventTables(fd, parseEIT, 0, &callbacks); */
 	if(fd)
 	{
 		close(fd);

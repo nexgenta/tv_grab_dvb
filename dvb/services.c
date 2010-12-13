@@ -4,6 +4,7 @@
 #include <errno.h>
 
 #include "services.h"
+#include "multiplexes.h"
 
 #define SERVICE_URI_SIZE                128
 
@@ -14,6 +15,9 @@ struct service_struct
 	char provider[128];
 	char authority[128];
 	service_type_t type;
+	void *data;
+	int version;
+	mux_t *mux;
 };
 
 static size_t nservices, nservalloc;
@@ -37,10 +41,9 @@ service_add(const char *uri)
 		{
 			return NULL;
 		}
+		strcpy(p->uri, uri);
 	}
-	memset(p, 0, sizeof(service_t));
-	p->type = ST_RESERVED_FF;
-	strcpy(p->uri, uri);	
+	service_reset(p);
 	return p;
 }
 
@@ -51,6 +54,19 @@ service_add_dvb(int original_network_id, int transport_stream_id, int service_id
 	
 	sprintf(uri, "dvb://%04x.%04x.%04x", original_network_id, transport_stream_id, service_id);
 	return service_add(uri);
+}
+
+void
+service_reset(service_t *service)
+{
+	service_t p;
+
+	memset(&p, 0, sizeof(service_t));
+	strcpy(p.uri, service->uri);
+	p.data = service->data;
+	p.version = -1;
+	p.type = ST_RESERVED_FF;
+	memcpy(service, &p, sizeof(service_t));
 }
 
 service_t *
@@ -77,6 +93,47 @@ service_locate_dvb(int original_network_id, int transport_stream_id, int service
 	return service_locate(uri);
 }
 
+/* Locate a service and return it as-is if it already exist, or else create
+ * a new service.
+ */
+service_t *
+service_locate_add(const char *uri)
+{
+	service_t *s;
+	
+	if((s = service_locate(uri)))
+	{
+		return s;
+	}
+	return service_add(uri);
+}
+
+service_t *
+service_locate_add_dvb(int original_network_id, int transport_stream_id, int service_id)
+{
+	char uri[64];
+	
+	sprintf(uri, "dvb://%04x.%04x.%04x", original_network_id, transport_stream_id, service_id);
+	return service_locate_add(uri);
+}
+
+const char *
+service_uri(service_t *service)
+{
+	return service->uri;
+}
+
+void
+service_set_data(service_t *service, void *data)
+{
+	service->data = data;
+}
+
+void *
+service_data(service_t *service)
+{
+	return service->data;
+}
 
 void
 service_set_type(service_t *service, service_type_t type)
@@ -88,6 +145,18 @@ service_type_t
 service_type(service_t *service)
 {
 	return service->type;
+}
+
+void
+service_set_mux(service_t *service, mux_t *mux)
+{
+	service->mux = mux;
+}
+
+mux_t *
+service_mux(service_t *service)
+{
+	return service->mux;
 }
 
 void
@@ -139,6 +208,13 @@ service_authority(service_t *service)
 }
 
 void
+service_debug(service_t *service)
+{
+	fprintf(stderr, " name='%s', provider='%s', authority='%s', type=0x%02x\n", service->name, service->provider, service->authority, service->type);
+	fprintf(stderr, "      URI: %s\n", service->uri);
+}
+
+void
 service_debug_dump(void)
 {
 	size_t i;
@@ -146,8 +222,8 @@ service_debug_dump(void)
 	fprintf(stderr, "----- Services dump (%d allocated, %d defined):\n", (int) nservalloc, (int) nservices);
 	for(i = 0; i < nservices; i++)
 	{
-		fprintf(stderr, " %3d: name='%s', provider='%s', authority='%s', type=0x%02x\n", i, services[i]->name, services[i]->provider, services[i]->authority, services[i]->type);
-		fprintf(stderr, "      URI: %s\n", services[i]->uri);
+		fprintf(stderr, " %3d: ", i);
+		service_debug(services[i]);
 	}
 }
 

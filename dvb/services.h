@@ -1,6 +1,8 @@
 #ifndef SERVICES_H_
 # define SERVICES_H_                    1
 
+# include "multiplexes.h"
+
 typedef struct service_struct service_t;
 
 typedef enum service_type {
@@ -44,6 +46,16 @@ service_t *service_add_dvb(int original_network_id, int transport_stream_id, int
 service_t *service_locate(const char *uri);
 service_t *service_locate_dvb(int original_network_id, int transport_stream_id, int service_id);
 
+service_t *service_locate_add(const char *uri);
+service_t *service_locate_add_dvb(int original_network_id, int transport_stream_id, int service_id);
+
+void service_reset(service_t *p);
+
+const char *service_uri(service_t *service);
+
+void service_set_data(service_t *service, void *data);
+void *service_data(service_t *service);
+
 void service_set_type(service_t *service, service_type_t type);
 service_type_t service_type(service_t *service);
 
@@ -56,6 +68,10 @@ const char *service_provider(service_t *service);
 void service_set_authority(service_t *service, const char *authority);
 const char *service_authority(service_t *service);
 
+void service_set_mux(service_t *service, mux_t *mux);
+mux_t *service_mux(service_t *service);
+
+void service_debug(service_t *service);
 void service_debug_dump(void);
 
 #endif /*!SERVICES_H_*/

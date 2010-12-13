@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#include "dvb/dvb.h"
+
 /* lookup.c */
 union lookup_key {
 	int i;
@@ -56,9 +58,9 @@ extern struct chninfo *channels;
 char *get_channelident(int chanid);
 
 /* dvb-eit.c */
-extern int parseEIT(void *data, size_t len);
+extern int parseEIT(void *data, size_t len, dvb_callbacks_t *callbacks);
 
 /* dvb-si.c */
-extern int parse_dvb_si(void *data, size_t len);
+extern int parse_dvb_si(void *data, size_t len, dvb_callbacks_t *callbacks);
 
 #endif

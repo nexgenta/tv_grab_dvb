@@ -35,6 +35,9 @@
 
 #include "si_tables.h"
 #include "tv_grab_dvb.h"
+#include "events.h"
+#include "xmltv.h"
+#include "callbacks.h"
 
 enum ER { TITLE, SUB_TITLE };
 enum CR { LANGUAGE, VIDEO, AUDIO, SUBTITLES };
@@ -43,25 +46,28 @@ static inline void set_bit(int *bf, int b);
 static inline bool get_bit(int *bf, int b);
 static char *xmllang(u_char *l);
 static void parseMJD(long int mjd, struct tm *t);
-static void parseDescription(void *data, size_t len);
+static void parseDescription(event_t *ev, void *data, size_t len);
 static bool validateDescription(void *data, size_t len);
-static void parseEventDescription(void *data, enum ER round);
-static void parseLongEventDescription(void *data);
-static void parseComponentDescription(void *data, enum CR round, int *seen);
-static void parseContentDescription(void *data);
-static void parseRatingDescription(void *data);
-static int parsePrivateDataSpecifier(void *data);
-static void parseContentIdentifierDescription(void *data);
+static void parseEventDescription(event_t *ev, void *data, enum ER round);
+static void parseLongEventDescription(event_t *ev, void *data);
+static void parseComponentDescription(event_t *ev, void *data, enum CR round, int *seen);
+static void parseContentDescription(event_t *ev, void *data);
+static void parseRatingDescription(event_t *ev, void *data);
+static int parsePrivateDataSpecifier(event_t *ev, void *data);
+static void parseContentIdentifierDescription(event_t *ev, void *data);
 
 /* Parse Event Information Table. {{{ */
-int parseEIT(void *data, size_t len) {
+int parseEIT(void *data, size_t len, dvb_callbacks_t *callbacks) {
 	struct eit *e = data;
 	void *p;
 	struct tm  dvb_time;
-	char       date_strbuf[256];
+	char       date_strbuf[64], idbuf[256];
+	service_t *service;
+	event_t *ev;	
 
 	len -= 4; //remove CRC
 
+	service = service_locate_dvb(HILO(e->original_network_id), HILO(e->transport_stream_id), HILO(e->service_id));
 	// For each event listing
 	for (p = &e->data; p < data + len; p += EIT_EVENT_LEN + GetEITDescriptorsLoopLength(p)) {
 		struct eit_event *evt = p;
@@ -83,6 +89,15 @@ int parseEIT(void *data, size_t len) {
 		}
 
 		// its a new program
+		
+		sprintf(date_strbuf, "%s/%04x", get_channelident(HILO(e->service_id)), HILO(evt->event_id));
+		if(NULL == (ev = event_alloc(date_strbuf)))
+		{
+			perror("error allocating new event");
+			return -1;
+		}
+		event_set_service(ev, service);
+
 		if (c == NULL) {
 			chninfo_t *nc = malloc(sizeof(struct chninfo));
 			nc->sid = HILO(e->service_id);
@@ -106,30 +121,46 @@ int parseEIT(void *data, size_t len) {
 		dvb_time.tm_hour = BcdCharToInt(evt->start_time_h) + time_offset;
 		time_t start_time = timegm(&dvb_time);
 
+		event_set_start(ev, start_time);
 		dvb_time.tm_sec  += BcdCharToInt(evt->duration_s);
 		dvb_time.tm_min  += BcdCharToInt(evt->duration_m);
 		dvb_time.tm_hour += BcdCharToInt(evt->duration_h);
 		time_t stop_time = timegm(&dvb_time);
-
+		event_set_duration(ev, stop_time - start_time);
 		time_t now;
 		time(&now);
 		// basic bad date check. if the program ends before this time yesterday, or two weeks from today, forget it.
 		if ((difftime(stop_time, now) < -24*60*60) || (difftime(now, stop_time) > 14*24*60*60) ) {
 			invalid_date_count++;
 			if (ignore_bad_dates)
+			{
+				event_free(ev);
 				return 0;
+			}
 		}
 
 		// a program must have a title that isn't empty
 		if (!validateDescription(&evt->data, GetEITDescriptorsLoopLength(evt))) {
+			event_free(ev);
 			return 0;
 		}
 
 		programme_count++;
+		
+		strftime(date_strbuf, sizeof(date_strbuf), "%Y-%m-%dT%H:%M:%SZ", gmtime(&start_time));
+		
+		sprintf(idbuf, "dvb://%04x.%04x.%04x;%04x@%s--PT%02dH%02dM%02dS",
+				HILO(e->original_network_id),
+				HILO(e->transport_stream_id),
+				HILO(e->service_id),
+				HILO(evt->event_id),
+				date_strbuf,
+				BcdCharToInt(evt->duration_h),
+				BcdCharToInt(evt->duration_m),
+				BcdCharToInt(evt->duration_s));
+		event_set_transport_uri(ev, idbuf);
 
 		printf("<programme channel=\"%s\" ", get_channelident(HILO(e->service_id)));
-//		printf("<programme channel=\"dvb://%04x.%04x.%04x\" ",
-//			   HILO(e->original_network_id), HILO(e->transport_stream_id), HILO(e->service_id));
 		strftime(date_strbuf, sizeof(date_strbuf), "start=\"%Y%m%d%H%M%S %z\"", localtime(&start_time) );
 		printf("%s ", date_strbuf);
 		strftime(date_strbuf, sizeof(date_strbuf), "stop=\"%Y%m%d%H%M%S %z\"", localtime(&stop_time));
@@ -139,8 +170,18 @@ int parseEIT(void *data, size_t len) {
 		//printf("\t<RunningStatus>%i</RunningStatus>\n", evt->running_status);
 		//1 Airing, 2 Starts in a few seconds, 3 Pausing, 4 About to air
 
-		parseDescription(&evt->data, GetEITDescriptorsLoopLength(evt));
+		parseDescription(ev, &evt->data, GetEITDescriptorsLoopLength(evt));
 		printf("</programme>\n");
+		event_debug(ev);		
+		if(!event_pcrid(ev))
+		{
+			fprintf(stderr, "Event with no crid\n");
+		}
+		if(callbacks->event)
+		{
+			callbacks->event(ev, callbacks->event_data);
+		}
+		event_free(ev);
 	}
 	return 0;
 } /*}}}*/
@@ -195,7 +236,7 @@ static void parseMJD(long int mjd, struct tm *t) {
 'video', 'audio', 'previously-shown', 'premiere', 'last-chance',
 'new', 'subtitles', 'rating', 'star-rating'
 */
-static void parseDescription(void *data, size_t len) {
+static void parseDescription(event_t *ev, void *data, size_t len) {
 	int round, pds = 0;
 
 	for (round = 0; round < 8; round++) {
@@ -209,37 +250,37 @@ static void parseDescription(void *data, size_t len) {
 				case 0x4D: //short evt desc, [title] [sub-title]
 					// there can be multiple language versions of these
 					if (round == 0) {
-						parseEventDescription(desc, TITLE);
+						parseEventDescription(ev, desc, TITLE);
 					}
 					else if (round == 1)
-						parseEventDescription(desc, SUB_TITLE);
+						parseEventDescription(ev, desc, SUB_TITLE);
 					break;
 				case 0x4E: //long evt descriptor [desc]
 					if (round == 2)
-						parseLongEventDescription(desc);
+						parseLongEventDescription(ev, desc);
 					break;
 				case 0x50: //component desc [language] [video] [audio] [subtitles]
 					if (round == 4)
-						parseComponentDescription(desc, LANGUAGE, &seen);
+						parseComponentDescription(ev, desc, LANGUAGE, &seen);
 					else if (round == 5)
-						parseComponentDescription(desc, VIDEO, &seen);
+						parseComponentDescription(ev, desc, VIDEO, &seen);
 					else if (round == 6)
-						parseComponentDescription(desc, AUDIO, &seen);
+						parseComponentDescription(ev, desc, AUDIO, &seen);
 					else if (round == 7)
-						parseComponentDescription(desc, SUBTITLES, &seen);
+						parseComponentDescription(ev, desc, SUBTITLES, &seen);
 					break;
 				case 0x53: // CA Identifier Descriptor
 					break;
 				case 0x54: // content desc [category]
 					if (round == 3)
-						parseContentDescription(desc);
+						parseContentDescription(ev, desc);
 					break;
 				case 0x55: // Parental Rating Descriptor [rating]
 					if (round == 7)
-						parseRatingDescription(desc);
+						parseRatingDescription(ev, desc);
 					break;
 				case 0x5f: // Private Data Specifier
-					pds = parsePrivateDataSpecifier(desc);
+					pds = parsePrivateDataSpecifier(ev, desc);
 					break;
 				case 0x64: // Data broadcast desc - Text Desc for Data components
 					break;
@@ -262,7 +303,7 @@ static void parseDescription(void *data, size_t len) {
 					break;
 				case 0x76: // Content identifier descriptor
 					if (round == 5)
-						parseContentIdentifierDescription(desc);
+						parseContentIdentifierDescription(ev, desc);
 					break;
 				default:
 					if (round == 0)
@@ -287,7 +328,7 @@ static bool validateDescription(void *data, size_t len) {
 } /*}}}*/
 
 /* Parse 0x4D Short Event Descriptor. {{{ */
-static void parseEventDescription(void *data, enum ER round) {
+static void parseEventDescription(event_t *ev, void *data, enum ER round) {
 	assert(GetDescriptorTag(data) == 0x4D);
 	struct descr_short_event *evtdesc = data;
 	char evt[256];
@@ -300,6 +341,8 @@ static void parseEventDescription(void *data, enum ER round) {
 		assert(evtlen < sizeof(evt));
 		memcpy(evt, (char *)&evtdesc->data, evtlen);
 		evt[evtlen] = '\0';
+		/* XXX FIXME: UTF-8 */
+		event_set_title(ev, evt, xmllang(&evtdesc->lang_code1));
 		printf("\t<title lang=\"%s\">%s</title>\n", xmllang(&evtdesc->lang_code1), xmlify(evt));
 		return;
 	}
@@ -309,8 +352,9 @@ static void parseEventDescription(void *data, enum ER round) {
 		assert(dsclen < sizeof(dsc));
 		memcpy(dsc, (char *)&evtdesc->data[evtlen+1], dsclen);
 		dsc[dsclen] = '\0';
-
 		if (*dsc) {
+			/* XXX FIXME: UTF-8 */
+			event_set_subtitle(ev, dsc, xmllang(&evtdesc->lang_code1));
 			char *d = xmlify(dsc);
 			if (d && *d)
 				printf("\t<sub-title lang=\"%s\">%s</sub-title>\n", xmllang(&evtdesc->lang_code1), d);
@@ -319,7 +363,7 @@ static void parseEventDescription(void *data, enum ER round) {
 } /*}}}*/
 
 /* Parse 0x4E Extended Event Descriptor. {{{ */
-static void parseLongEventDescription(void *data) {
+static void parseLongEventDescription(event_t *ev, void *data) {
 	assert(GetDescriptorTag(data) == 0x4E);
 	struct descr_extended_event *levt = data;
 	char dsc[256];
@@ -370,7 +414,7 @@ static void parseLongEventDescription(void *data) {
    audio information.  seen is a pointer to a counter to ensure we
    only output the first one of each (XMLTV can't cope with more than
    one) */
-static void parseComponentDescription(void *data, enum CR round, int *seen) {
+static void parseComponentDescription(event_t *ev, void *data, enum CR round, int *seen) {
 	assert(GetDescriptorTag(data) == 0x50);
 	struct descr_component *dc = data;
 	char buf[256];
@@ -383,6 +427,7 @@ static void parseComponentDescription(void *data, enum CR round, int *seen) {
 	switch (dc->stream_content) {
 		case 0x01: // Video Info
 			if (round == VIDEO && !*seen) {
+				event_set_aspect(ev, (dc->component_type - 1) & 0x03);
 				//if ((dc->component_type-1)&0x08) //HD TV
 				//if ((dc->component_type-1)&0x04) //30Hz else 25
 				printf("\t<video>\n");
@@ -393,12 +438,14 @@ static void parseComponentDescription(void *data, enum CR round, int *seen) {
 			break;
 		case 0x02: // Audio Info
 			if (round == AUDIO && !*seen) {
+				event_set_audio(ev, dc->component_type);
 				printf("\t<audio>\n");
 				printf("\t\t<stereo>%s</stereo>\n", lookup(audio_table, (dc->component_type)));
 				printf("\t</audio>\n");
 				(*seen)++;
 			}
 			if (round == LANGUAGE) {
+				event_set_lang(ev, xmllang(&dc->lang_code1));
 				if (!*seen)
 					printf("\t<language>%s</language>\n", xmllang(&dc->lang_code1));
 				else
@@ -431,7 +478,7 @@ static void parseComponentDescription(void *data, enum CR round, int *seen) {
 } /*}}}*/
 
 /* Parse 0x54 Content Descriptor. {{{ */
-static void parseContentDescription(void *data) {
+static void parseContentDescription(event_t *ev, void *data) {
 	assert(GetDescriptorTag(data) == 0x54);
 	struct descr_content *dc = data;
 	int once[256/8/sizeof(int)] = {0,};
@@ -460,7 +507,7 @@ static void parseContentDescription(void *data) {
 } /*}}}*/
 
 /* Parse 0x55 Rating Descriptor. {{{ */
-static void parseRatingDescription(void *data) {
+static void parseRatingDescription(event_t *ev, void *data) {
 	assert(GetDescriptorTag(data) == 0x55);
 	struct descr_parental_rating *pr = data;
 	void *p;
@@ -481,14 +528,14 @@ static void parseRatingDescription(void *data) {
 } /*}}}*/
 
 /* Parse 0x5F Private Data Specifier. {{{ */
-static int parsePrivateDataSpecifier(void *data) {
+static int parsePrivateDataSpecifier(event_t *ev, void *data) {
 	assert(GetDescriptorTag(data) == 0x5F);
 	return GetPrivateDataSpecifier(data);
 } /*}}}*/
 
 /* Parse 0x76 Content Identifier Descriptor. {{{ */
 /* See ETSI TS 102 323, section 12 */
-static void parseContentIdentifierDescription(void *data) {
+static void parseContentIdentifierDescription(event_t *ev, void *data) {
 	assert(GetDescriptorTag(data) == 0x76);
 	struct descr_content_identifier *ci = data;
 	void *p;
@@ -517,11 +564,20 @@ static void parseContentIdentifierDescription(void *data) {
 			assert(cridlen < sizeof(buf));
 			memcpy(buf, (char *)&crid_data->crid_byte, cridlen);
 			buf[cridlen] = '\0';
-
+			if(crid->crid_type == 0x01 || crid->crid_type == 0x31)
+			{
+				event_set_pcrid(ev, buf);
+			}
+			else if(crid->crid_type == 0x02 || crid->crid_type == 0x32)
+			{
+				event_set_scrid(ev, buf);
+			}
 			printf("\t<crid type='%s'>%s</crid>\n", type, xmlify(buf));
 			crid_length = 2 + crid_data->crid_length;
 			break;
 		case 0x01: /* Carried in Content Identifier Table (CIT) */
+			fprintf(stderr, "--- Reference to crid in CIT\n");
+			exit(1);
 			break;
 		default:
 			break;

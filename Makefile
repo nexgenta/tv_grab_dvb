@@ -3,19 +3,30 @@
 #Perhaps you want a line like this instead. I've not used autoconf yet
 #CFLAGS=-Wall -O2 -I/usr/src/dvb-kernel/linux/include/
 CFLAGS=-Wall -O0 -g
-
+LDFLAGS=-g
 dvb_text := dvb_text.o
 dvb_text := dvb_text_iconv.o
 
-tv_grab_dvb:	dvb-demux.o dvb-eit.o dvb-si.o tv_grab_dvb.o crc32.o lookup.o dvb_info_tables.o $(dvb_text) langidents.o services.o
-tv_grab_dvb.o:  tv_grab_dvb.h si_tables.h dvb-demux.h services.h
+#all: tv_grab_dvb dvb2xrd
+all: dvb2xrd
+
+dvb2xrd: dvb2xrd.o crc32.o lookup.o dvb_info_tables.o $(dvb_text) langidents.o dvb/libdvb.a
+
+tv_grab_dvb:	tv_grab_dvb.o crc32.o lookup.o dvb_info_tables.o $(dvb_text) langidents.o xmltv.o tvanytime.o dvb/libdvb.a
+
+tv_grab_dvb.o:  tv_grab_dvb.h dvb/dvb.h xmltv.h
 lookup.o:	tv_grab_dvb.h
 dvb_info_tables.o:	tv_grab_dvb.h
 langidents.o:	langidents.c tv_grab_dvb.h
-dvb-demux.o: dvb-demux.c dvb-demux.h
 dvb-eit.o: dvb-eit.c si_tables.h tv_grab_dvb.h
-dvb-si.o: dvb-si.c si_tables.h
-services.o: services.c services.h
+xmltv.o: xmltv.c xmltv.h dvb/dvb.h
+tvanytime.o: tvanytime.c tvanytime.h dvb/dvb.h
+
+dvb/libdvb.a: dummy
+	cd dvb && $(MAKE)
+
+.PHONY: dummy
+dummy:
 
 # langidents.c is generated
 empty:=
@@ -48,6 +59,7 @@ clean:
 	$(RM) *.o tv_grab_dvb
 	$(RM) langidents.c
 	$(RM) *~ *.bak *.orig
+	cd dvb && $(MAKE) clean
 
 .PHONY: distclean
 distclean: clean
