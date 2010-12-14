@@ -24,6 +24,7 @@ dvb_parse_sdt(dvb_table_t *table, dvb_callbacks_t *callbacks)
 	unsigned char *start, *end, *p, *d;
 	size_t ndescr, i;
 	service_t *svc;
+	mux_t *mux;
 	
 	for(i = 0; i < table->nsections; i++)
 	{
@@ -46,6 +47,8 @@ dvb_parse_sdt(dvb_table_t *table, dvb_callbacks_t *callbacks)
 			DBG(7, fprintf(stderr, "[dvb_parse_sdt:%d: service = dvb://%04x.%04x.%04x]\n",
 						   i, GetSDTOriginalNetworkId(sdt), GetSDTTransportStreamId(sdt), HILO(service->service_id)));
 			svc = service_add_dvb(GetSDTOriginalNetworkId(sdt), GetSDTTransportStreamId(sdt), HILO(service->service_id));
+			mux = mux_locate_add_dvb(GetSDTOriginalNetworkId(sdt), GetSDTTransportStreamId(sdt));
+			service_set_mux(svc, mux);
 			DBG(9, fprintf(stderr, "[dvb_parse_sdt:%d: there are %u bytes of descriptors]\n", i, ndescr));
 			if(!ndescr)
 			{
@@ -64,9 +67,15 @@ dvb_parse_sdt(dvb_table_t *table, dvb_callbacks_t *callbacks)
 				case 0x48:
 					parse_sdt_service_descriptor(svc, sdt, service, descr);
 					break;
+				case 0x4b:
+					fprintf(stderr, "Warning: parse_dvb:sdt: Skipped NVOD_reference_descriptor\n");
+					break;
 				case 0x53:
 					fprintf(stderr, "Warning: parse_dvb_sdt: Skipped SDT CA_identifier_descriptor (0x%02x; len=%d)\n",
 							GetDescriptorTag(descr), (int) GetDescriptorLength(descr));
+					break;
+				case 0x5f:
+					fprintf(stderr, "Warning: parse_dvb_sdt: Skipped private_data_specifier\n");
 					break;
 				case 0x73:
 					parse_sdt_default_authority_descriptor(svc, sdt, service, descr);
@@ -76,8 +85,16 @@ dvb_parse_sdt(dvb_table_t *table, dvb_callbacks_t *callbacks)
 							GetDescriptorTag(descr), (int) GetDescriptorLength(descr));
 					break;
 				default:
-					fprintf(stderr, "Warning: parse_dvb_sdt: Unknown SDT descriptor 0x%02x (len=%d)\n",
-							GetDescriptorTag(descr), (int) GetDescriptorLength(descr));
+					if(GetDescriptorTag(descr) >= 0x80 && GetDescriptorTag(descr) <= 0xFE)
+					{
+						fprintf(stderr, "Warning: parse_dvb_sdt: Skipped user-defined SDT descriptor 0x%02x (len=%d)\n",
+								GetDescriptorTag(descr), (int) GetDescriptorLength(descr));
+					}
+					else
+					{
+						fprintf(stderr, "Warning: parse_dvb_sdt: Unknown SDT descriptor 0x%02x (len=%d)\n",
+								GetDescriptorTag(descr), (int) GetDescriptorLength(descr));
+					}
 				}
 			}
 			DBG(5, fprintf(stderr, "[dvb_parse_sdt:%d: service description complete]\n", i));

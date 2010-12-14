@@ -237,6 +237,7 @@ main(int argc, char **argv)
 	read_nit(NULL);
 	read_sdt(NULL);   
 	network_debug_dump();
+	service_debug_dump();
 	return 0;
 }
 

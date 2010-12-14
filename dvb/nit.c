@@ -106,6 +106,15 @@ dvb_parse_nit(dvb_table_t *table, dvb_callbacks_t *callbacks)
 					/* service_list_descriptor */
 					DBG(5, fprintf(stderr, "service_list_descriptor\n"));
 					break;
+				case 0x42:
+					/* stuffing_descriptor */
+					break;
+				case 0x43:
+					DBG(5, fprintf(stderr, "satellite_delivery_system_descriptor\n"));
+					break;
+				case 0x44:
+					DBG(5, fprintf(stderr, "cable_delivery_system_descriptor\n"));
+					break;
 				case 0x5a:
 					/* terrestrial_delivery_system_descriptor */
 					DBG(5, fprintf(stderr, "terrestrial_delivery_system_descriptor\n"));

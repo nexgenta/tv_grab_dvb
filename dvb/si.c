@@ -25,6 +25,9 @@ dvb_parse_si(dvb_table_t *table, dvb_callbacks_t *callbacks)
 	case 0x42:
 	case 0x46:
 		return dvb_parse_sdt(table, callbacks);
+	case 0x4a:
+		fprintf(stderr, "Warning: parse_dvb_si: bouquet_association_table (0x%02x) is not yet handled\n", table->table_id);
+		break;
 	}
 	fprintf(stderr, "Warning: parse_dvb_si: Unknown SI table 0x%02x (version=%02d)\n",
 			table->table_id, table->version_number);
