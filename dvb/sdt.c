@@ -39,7 +39,7 @@ dvb_parse_sdt(dvb_table_t *table, dvb_callbacks_t *callbacks)
 		p = start + SDT_LEN;
 		while(p < end)
 		{
-			DBG(9, fprintf(stderr, "[dvb_parse_sdt:%d: p=%08x, end=%08x]\n", i, p, end));
+/*			DBG(9, fprintf(stderr, "[dvb_parse_sdt:%d: p=%08x, end=%08x]\n", i, p, end)); */
 			service = (void *) p;
 			p += SDT_DESCR_LEN;
 			ndescr = GetSDTDescriptorsLoopLength(service);
@@ -56,7 +56,7 @@ dvb_parse_sdt(dvb_table_t *table, dvb_callbacks_t *callbacks)
 			while(d < p)
 			{			
 				descr = (void *) d;
-				DBG(9, fprintf(stderr, "[dvb_parse_sdt:%d: d=%08x, p=%08x, end=%08x]\n", i, d, p, end));
+/*				DBG(9, fprintf(stderr, "[dvb_parse_sdt:%d: d=%08x, p=%08x, end=%08x]\n", i, d, p, end)); */
 				DBG(9, fprintf(stderr, "[dvb_parse_sdt:%d: descriptor length is %u]\n", i, DESCR_GEN_LEN + GetDescriptorLength(d)));
 				d += DESCR_GEN_LEN + GetDescriptorLength(d);
 				switch(GetDescriptorTag(descr))
