@@ -110,7 +110,7 @@ parse_options(int arg_count, char **arg_strings)
 				exit(EXIT_FAILURE);
 			}
 			break;		   
-		case 'S':
+		case 's':
 			service_scan = atoi(optarg);
 			if (0 == service_scan)
 			{
