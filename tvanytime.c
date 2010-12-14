@@ -3,9 +3,20 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <ctype.h>
 
 #include "tvanytime.h"
 #include "dvb/dvb.h"
+
+typedef struct tva_service_struct tva_service_t;
+
+struct tva_service_struct
+{
+	char serviceid[64];
+	FILE *cr; /* Content referencing table */
+	FILE *pi; /* Programme information table */
+	FILE *pl; /* Programme location table */
+};
 
 void
 tva_preamble_service(tva_options_t *options)
@@ -30,11 +41,16 @@ int
 tva_write_service(service_t *service, void *data)
 {
 	service_type_t st;
+	tva_service_t *svc;
 	const char *s, *p;
 	tva_options_t *options = data;
-	char serviceId[64];
 	int c;
-
+	
+	if(NULL == (svc = calloc(1, sizeof(tva_service_t))))
+	{
+		return -1;
+	}
+	service_set_data(service, svc);
 	st = service_type(service);
 	switch(service_type(service))
 	{
@@ -55,18 +71,31 @@ tva_write_service(service_t *service, void *data)
 	if((s = service_name(service)))
 	{
 		c = 0;
-		for(p = s; c < sizeof(serviceId) - 1 && *p; p++)
+		for(p = s; c < sizeof(svc->serviceid) - 1 && *p; p++)
 		{
-			serviceId[c] = isalnum(*p) ? *p : '_';
-			c++;
+			if(isalnum(*p))
+			{
+				svc->serviceid[c] = *p;
+				c++;
+			}
 		}
-		serviceId[c] = 0;
-		fprintf(options->out, "\t\t\t<ServiceInformation serviceId=\"%s\">\n", serviceId);
-		fprintf(options->out, "\t\t\t\t<Name>%s</Name>\n", s);
+		svc->serviceid[c] = 0;
 	}
-	else
+	if(!svc->serviceid[0])
 	{
-		fprintf(options->out, "\t\t\t<ServiceInformation serviceId=\"%s\">\n", service_uri(service));
+		s = service_uri(service);
+		p = strrchr(s, '.');
+		if(p)
+		{
+			p++;
+			snprintf(svc->serviceid, sizeof(svc->serviceid), "dvb%s", p);
+		}
+		s = NULL;
+	}	
+	fprintf(options->out, "\t\t\t<ServiceInformation serviceId=\"%s\">\n", svc->serviceid);
+	if(s)
+	{
+		fprintf(options->out, "\t\t\t\t<Name>%s</Name>\n", s);
 	}
 	if((s = service_provider(service)))
 	{
