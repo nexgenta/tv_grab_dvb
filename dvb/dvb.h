@@ -23,6 +23,8 @@ struct dvb_table_struct
 {
 	int table_id;
 	int version_number;
+	int current_next_indicator;
+	uint32_t identifier;
 	size_t nsections;
 	dvb_section_t **sections;
 };
@@ -35,6 +37,7 @@ union dvb_section_union
 	pmt_t pmt;
 	nit_t nit;
 	sdt_t sdt;
+	eit_t eit;
 };
 
 # ifdef __cplusplus

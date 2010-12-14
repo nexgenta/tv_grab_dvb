@@ -14,8 +14,8 @@
 #include "p_dvb.h"
 
 static dvb_table_t *dvb_demux_read_section(dvb_demux_t *context, dvb_section_t *section);
-static dvb_table_t *dvb_demux_section_add(dvb_demux_t *context, int table_id, int version, int secnum, int last, dvb_section_t *section);
-static dvb_table_t *dvb_demux_table_alloc(dvb_demux_t *context, int table_id, int count);
+static dvb_table_t *dvb_demux_section_add(dvb_demux_t *context, int table_id, int current_next, uint32_t identifier, int version, int secnum, int last, dvb_section_t *section);
+static dvb_table_t *dvb_demux_table_alloc(dvb_demux_t *context, int table_id, int current_next, uint32_t identifier, int count);
 static void dvb_demux_table_reset(dvb_demux_t *context, dvb_table_t *table, int count);
 
 /* Read until either 'until', or the specified timeout is reached, or a complete
@@ -184,29 +184,49 @@ dvb_demux_read(dvb_demux_t *context, time_t until)
 static dvb_table_t *
 dvb_demux_read_section(dvb_demux_t *context, dvb_section_t *section)
 {
-	int versioned;
+	int versioned, cni;
 	dvb_table_t *table;
 	dvb_section_t *p;
 	size_t i;
-	
+	uint32_t identifier;
+
 	DBG(8, fprintf(stderr, "[read_section: table_id is 0x%02x]\n", section->si.table_id));
+	versioned = 1;
+	identifier = 0;
+	cni = 1;
 	switch(GetTableId(section))
 	{
 	case 0x00: /* PAT */
+		identifier = HILO(section->pat.transport_stream_id);
+		cni = section->pat.current_next_indicator;
+		break;
 	case 0x02: /* PMT */
+		identifier = HILO(section->pmt.program_number);
+		cni = section->pmt.current_next_indicator;
+		break;
 	case 0x03: /* TSDT */
+		break;
 	case 0x40: /* NIT (this network) */
 	case 0x41: /* NIT (other network) */
+		identifier = HILO(section->nit.network_id);
+		cni = section->nit.current_next_indicator;
+		break;
 	case 0x42: /* SDT (this TS) */
 	case 0x46: /* SDT (other TS) */
+		identifier = ((uint32_t) HILO(section->sdt.original_network_id)) << 16 | HILO(section->sdt.transport_stream_id);
+		cni = section->sdt.current_next_indicator;
+		break;
 	case 0x4E: /* EIT (this TS, now & next) */
 	case 0x4F: /* EIT (other TS, now & next) */
-		versioned = 1;
+		identifier = ((uint32_t) HILO(section->sdt.original_network_id)) << 16 | HILO(section->sdt.transport_stream_id);
+		cni = section->eit.current_next_indicator;
 		break;
 	default:
 		if(GetTableId(section) >= 0x50 && GetTableId(section) <= 0x6F)
 		{
-			versioned = 1;
+			/* EITs */
+			identifier = ((uint32_t) HILO(section->sdt.original_network_id)) << 16 | HILO(section->sdt.transport_stream_id);
+			cni = section->eit.current_next_indicator;
 		}
 		else
 		{
@@ -218,7 +238,15 @@ dvb_demux_read_section(dvb_demux_t *context, dvb_section_t *section)
 		/* Versioned tables all have the same set of leading bytes */
 		DBG(8, fprintf(stderr, "[read_section: table is versioned; version=%02x, secno=%d, last=%d]\n",
 					   section->pat.version_number, section->pat.section_number, section->pat.last_section_number));
-		table = dvb_demux_section_add(context, GetTableId(section), section->pat.version_number, section->pat.section_number, section->pat.last_section_number, section);
+		table = dvb_demux_section_add(
+			context,
+			GetTableId(section),
+			cni,
+			identifier,
+			section->pat.version_number,
+			section->pat.section_number,
+			section->pat.last_section_number,
+			section);
 		for(i = 0; i < table->nsections; i++)
 		{
 			if(!table->sections[i])
@@ -238,7 +266,7 @@ dvb_demux_read_section(dvb_demux_t *context, dvb_section_t *section)
 	}
 	DBG(8, fprintf(stderr, "[read_section: table is not versioned]\n"));
 	/* dvb_demux_section_replace() */
-	table = dvb_demux_table_alloc(context, GetTableId(section), 1);
+	table = dvb_demux_table_alloc(context, GetTableId(section), cni, identifier, 1);
 	if(NULL == (p = calloc(1, GetSectionLength(section) + sizeof(si_tab_t))))
 	{
 		return NULL;
@@ -249,15 +277,15 @@ dvb_demux_read_section(dvb_demux_t *context, dvb_section_t *section)
 }
 
 static dvb_table_t *
-dvb_demux_section_add(dvb_demux_t *context, int table_id, int version, int secnum, int last, dvb_section_t *section)
+dvb_demux_section_add(dvb_demux_t *context, int table_id, int current_next, uint32_t identifier, int version, int secnum, int last, dvb_section_t *section)
 {
-	size_t i, n;
+	size_t i;
 	dvb_table_t *table;
 	dvb_section_t *p;
 
 	for(i = 0; i < context->ntables; i++)
 	{
-		if(context->tables[i].table_id == table_id)
+		if(context->tables[i].table_id == table_id && context->tables[i].current_next_indicator == current_next && context->tables[i].identifier == identifier)
 		{
 			table = &(context->tables[i]);
 			if(table->version_number > version)
@@ -265,31 +293,15 @@ dvb_demux_section_add(dvb_demux_t *context, int table_id, int version, int secnu
 				/* Discard the new one */
 				return table;
 			}
-			/* TODO: deal with current/next */
 			else if(table->version_number < version)
 			{
 				/* Discard the previous one */
 				dvb_demux_table_reset(context, table, last + 1);
 				table->version_number = version;
 			}
-			for(n = 0; n < table->nsections; n++)
+			/* We've previously (at least partially) read this one */
+			if(table->sections[secnum])
 			{
-				if(!table->sections[n])
-				{
-					break;
-				}
-			}
-			if(n == table->nsections)
-			{
-				/* We've previously read this one; start again */
-				dvb_demux_table_reset(context, table, last + 1);
-				table->version_number = version;
-			}
-			else if(table->sections[secnum])
-			{
-				/* This section's already been read, but there are more to
-				 * follow
-				 */
 				return table;
 			}
 			if(NULL == (p = calloc(1, GetSectionLength(section) + sizeof(si_tab_t))))
@@ -303,7 +315,7 @@ dvb_demux_section_add(dvb_demux_t *context, int table_id, int version, int secnu
 	}
 	/* No match, add a new entry */
 	DBG(9, fprintf(stderr, "[section_add: adding a new table for section with table_id = 0x%02x]\n", table_id));
-	table = dvb_demux_table_alloc(context, table_id, last + 1);
+	table = dvb_demux_table_alloc(context, table_id, current_next, identifier, last + 1);
 	table->version_number = version;
 	if(NULL == (p = calloc(1, GetSectionLength(section) + sizeof(si_tab_t))))
 	{
@@ -315,14 +327,14 @@ dvb_demux_section_add(dvb_demux_t *context, int table_id, int version, int secnu
 }
 
 static dvb_table_t *
-dvb_demux_table_alloc(dvb_demux_t *context, int table_id, int count)
+dvb_demux_table_alloc(dvb_demux_t *context, int table_id, int current_next, uint32_t identifier, int count)
 {
 	size_t i;
 	dvb_table_t *p, *l;
 	
 	for(i = 0; i < context->ntables; i++)
 	{
-		if(context->tables[i].table_id == table_id)
+		if(context->tables[i].table_id == table_id && context->tables[i].current_next_indicator == current_next && context->tables[i].identifier == identifier)
 		{
 			p = &(context->tables[i]);
 			dvb_demux_table_reset(context, p, count);
@@ -338,6 +350,8 @@ dvb_demux_table_alloc(dvb_demux_t *context, int table_id, int count)
 	context->ntables++;
 	memset(p, 0, sizeof(dvb_table_t));
 	p->table_id = table_id;
+	p->current_next_indicator = current_next;
+	p->identifier = identifier;
 	dvb_demux_table_reset(context, p, count);
 	return p;
 }
