@@ -1,3 +1,9 @@
 *.o
 tv_grab_dvb
+dvb2tva
+dvb2xrd
+*.xml
+*.txt
+*.xml
+*.conf
 

@@ -251,4 +251,23 @@ service_alloc(void)
 	return p;
 }
 
+int
+service_foreach(int (*fn)(service_t *mux, void *data), void *data)
+{
+	size_t n;
+	int r;
+
+	for(n = 0; n < nservices; n++)
+	{
+		if(services[n])
+		{
+			if((r = fn(services[n], data)) != 0)
+			{
+				return r;
+			}
+		}
+	}
+	return 0;
+}
+
 		

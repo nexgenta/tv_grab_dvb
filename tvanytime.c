@@ -7,8 +7,6 @@
 #include "tvanytime.h"
 #include "dvb/dvb.h"
 
-#include "tv_grab_dvb.h"
-
 void
 tva_preamble_service(tva_options_t *options)
 {
@@ -28,13 +26,15 @@ tva_postamble_service(tva_options_t *options)
 			"</TVAMain>\n");
 }
 
-void
+int
 tva_write_service(service_t *service, void *data)
 {
 	service_type_t st;
-	const char *s;
+	const char *s, *p;
 	tva_options_t *options = data;
-	
+	char serviceId[64];
+	int c;
+
 	st = service_type(service);
 	switch(service_type(service))
 	{
@@ -50,12 +50,23 @@ tva_write_service(service_t *service, void *data)
 		st = ST_RADIO;
 		break;
 	default:
-		return;
+		return 0;
 	}
-	fprintf(options->out, "\t\t\t<ServiceInformation serviceId=\"%s\">\n", "%serviceId%");
 	if((s = service_name(service)))
 	{
+		c = 0;
+		for(p = s; c < sizeof(serviceId) - 1 && *p; p++)
+		{
+			serviceId[c] = isalnum(*p) ? *p : '_';
+			c++;
+		}
+		serviceId[c] = 0;
+		fprintf(options->out, "\t\t\t<ServiceInformation serviceId=\"%s\">\n", serviceId);
 		fprintf(options->out, "\t\t\t\t<Name>%s</Name>\n", s);
+	}
+	else
+	{
+		fprintf(options->out, "\t\t\t<ServiceInformation serviceId=\"%s\">\n", service_uri(service));
 	}
 	if((s = service_provider(service)))
 	{
@@ -65,7 +76,7 @@ tva_write_service(service_t *service, void *data)
 	{
 		fprintf(options->out, "\t\t\t\t<ServiceURL>%s</ServiceURL>\n", s);
 	}
-	switch(service_type(service))
+	switch(st)
 	{
 	case ST_TV:
 		fprintf(options->out, "\t\t\t\t<ServiceGenre href=\"urn:tva:metadata:cs:MediaTypeCS:2005:7.1.3\">\n"
@@ -82,9 +93,14 @@ tva_write_service(service_t *service, void *data)
 		break;
 	}
 	fprintf(options->out, "\t\t\t</ServiceInformation>\n");
+	return 0;
 }
 
-void
+int
 tva_write_event(event_t *event, void *data)
 {
+	(void) event;
+	(void) data;
+	
+	return 0;
 }

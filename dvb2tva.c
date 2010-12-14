@@ -44,7 +44,7 @@ const char *id = "@(#) $Id$";
 #include <assert.h>
 
 #include "dvb/dvb.h"
-
+#include "tvanytime.h"
 #include "debug.h"
 
 static char *progname;
@@ -225,6 +225,8 @@ read_sdt(dvb_callbacks_t *callbacks)
 int
 main(int argc, char **argv)
 {
+	tva_options_t opts;
+
 	if((progname = strrchr(argv[0], '/')))
 	{
 		progname++;
@@ -236,7 +238,12 @@ main(int argc, char **argv)
 	parse_options(argc, argv);
 	read_nit(NULL);
 	read_sdt(NULL);   
-	network_debug_dump();
+	opts.out = stdout;
+
+	/* Write services */
+	tva_preamble_service(&opts);
+	service_foreach(tva_write_service, &opts);
+	tva_postamble_service(&opts);
 	return 0;
 }
 

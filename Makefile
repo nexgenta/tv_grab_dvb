@@ -8,9 +8,10 @@ dvb_text := dvb_text.o
 dvb_text := dvb_text_iconv.o
 
 #all: tv_grab_dvb dvb2xrd
-all: dvb2xrd
+all: dvb2xrd dvb2tva
 
-dvb2xrd: dvb2xrd.o crc32.o lookup.o dvb_info_tables.o $(dvb_text) langidents.o dvb/libdvb.a
+dvb2xrd: dvb2xrd.o dvb/libdvb.a
+dvb2tva: dvb2tva.o dvb/libdvb.a tvanytime.o
 
 tv_grab_dvb:	tv_grab_dvb.o crc32.o lookup.o dvb_info_tables.o $(dvb_text) langidents.o xmltv.o tvanytime.o dvb/libdvb.a
 

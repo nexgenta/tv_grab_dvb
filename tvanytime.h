@@ -14,7 +14,7 @@ struct tva_options_struct
 
 void tva_preamble_service(tva_options_t *options);
 void tva_postamble_service(tva_options_t *options);
-void tva_write_service(service_t *service, void *data);
-void tva_write_event(event_t *event, void *data);
+int tva_write_service(service_t *service, void *data);
+int tva_write_event(event_t *event, void *data);
 
 #endif /*!TVANYTIME_H_ */

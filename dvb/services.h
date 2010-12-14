@@ -71,6 +71,8 @@ const char *service_authority(service_t *service);
 void service_set_mux(service_t *service, mux_t *mux);
 mux_t *service_mux(service_t *service);
 
+int service_foreach(int (*fn)(service_t *mux, void *data), void *data);
+
 void service_debug(service_t *service);
 void service_debug_dump(void);
 
