@@ -18,6 +18,11 @@ $(TARGET_OUT): $(TARGET_OBJ)
 
 ## Dependencies
 
+dvb-si.h: dvb-si.idl gentables
+	./gentables < dvb-si.idl > dvb-si.h
+
+gentables: gentables.o
+
 platforms.o: platforms.c platforms.h
 multiplexes.o: multiplexes.c multiplexes.h platforms.h
 services.o: services.c services.h

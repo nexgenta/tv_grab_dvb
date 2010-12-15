@@ -1,3 +1,19 @@
+/*
+ * Copyright 2010 Mo McRoberts.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -29,6 +45,18 @@ static void dvb_demux_table_reset(dvb_demux_t *context, dvb_table_t *table, int 
  * provided they each use a different context).
  */
 
+typedef uint32_t uimsbf;
+typedef uint8_t bslbf;
+typedef uint32_t rpchof; 
+
+typedef struct {
+	uimsbf table_id:8;
+	bslbf section_syntax_indicator:1;
+	bslbf reserved_future_use:1;
+	bslbf reserved:2;
+	uimsbf section_length:12;
+} __attribute__((__packed__)) mpeg_section_t;
+
 dvb_table_t *
 dvb_demux_read(dvb_demux_t *context, time_t until)
 {
@@ -40,7 +68,8 @@ dvb_demux_read(dvb_demux_t *context, time_t until)
 	uint8_t *p;
 	dvb_section_t *section;
 	dvb_table_t *s;
-	
+	mpeg_section_t *test;
+
 	need = 3;
 	bufstart = bufend = 0;
 	noioctl = 1;
@@ -74,6 +103,20 @@ dvb_demux_read(dvb_demux_t *context, time_t until)
 				bufstart = bufend = 0;
 				continue;
 			}
+			test = (void *) p;
+			fprintf(stderr, "table() {\n"
+					"\tuimsbf table_id:8 = 0x%02x\n"
+					"\tbslbf section_syntax_indicator:1 = 0x%x\n"
+					"\tbslbf reserved_future_use:1 = 0x%x\n"
+					"\tbslbf reserved:2 = 0x%x\n"
+					"\tuimsbf section_length:12 = 0x%03x\n"
+					"}\n",
+					test->table_id,
+					test->section_syntax_indicator,
+					test->reserved_future_use,
+					test->reserved, 
+					test->section_length);
+			exit(0);
 			section = (void *) p;
 			l = GetSectionLength(&section->si);
 			DBG(9, fprintf(stderr, "[dvb_read: table_id = 0x%02x, section_length = %d]\n", GetTableId(&section->si), l));
