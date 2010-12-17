@@ -24,6 +24,10 @@
  *  limitations under the License.
  */
 
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,12 +56,15 @@ struct field_struct
 
 struct fieldset_struct
 {
+	char ident[IDENT_SIZE];
+	char next_tag[IDENT_SIZE];
+	size_t seq;
 	field_t *fields;
 	size_t nfields;
 	size_t nbits;
 };
 
-static void parse_block(const char *base, int *seq);
+static void parse_block(fieldset_t *fields);
 
 static void
 unexpected_eof(const char *where)
@@ -98,6 +105,10 @@ get_char(const char *where, int fatal)
 static void
 push_char(int ch)
 {
+	if(nextchar != -1)
+	{
+		ungetc(nextchar, fin);
+	}
 	nextchar = ch;
 }
 
@@ -107,7 +118,7 @@ skip_whitespace(int fatal)
 	int c, d, com;
 
 	com = 0;
-	while(1)
+	for(;;)
 	{
 		c = get_char(NULL, fatal);
 		if(!com && c == '/')
@@ -120,7 +131,7 @@ skip_whitespace(int fatal)
 				com = 1;
 				continue;
 			}
-			ungetc(d, fin);
+			push_char(d);
 			push_char(c);
 			return;
 		}
@@ -141,7 +152,7 @@ skip_whitespace(int fatal)
 		}
 		else if(!isspace(c))
 		{
-			ungetc(c, fin);
+			push_char(c);
 			return;
 		}
 		CHECKNL(c);
@@ -198,13 +209,13 @@ parse_ident(void)
 		fprintf(stderr, "%s:%d:%d: expected identifier, found '%c'\n", filename, line, col, c);
 		exit(EXIT_FAILURE);
 	}
-	ungetc(c, fin);
+	push_char(c);
 	skip_whitespace(1);
 	return ident;   
 }
 
 static char *
-parse_operator(void)
+parse_operator(int fatal)
 {
 	static const char *opers[] = {
 		"=", "==", "|=", "&=", "!=", "^", "++", "--", "/", "+", "-", "*",
@@ -230,7 +241,7 @@ parse_operator(void)
 			return oper;
 		}
 	}
-	ungetc(oper[1], fin);
+	push_char(oper[1]);
 	oper[1] = 0;
 	for(c = 0; opers[c]; c++)
 	{
@@ -241,8 +252,13 @@ parse_operator(void)
 			return oper;
 		}
 	}
-	fprintf(stderr, "%s:%d:%d: expected operator, found '%c'\n", filename, line, col, oper[0]);
-	exit(EXIT_FAILURE);	
+	if(fatal)
+	{
+		fprintf(stderr, "%s:%d:%d: expected operator, found '%c'\n", filename, line, col, oper[0]);
+		exit(EXIT_FAILURE);	
+	}
+	push_char(oper[0]);
+	return NULL;
 }
 
 static int
@@ -268,9 +284,37 @@ parse_dec(void)
 		fprintf(stderr, "%s:%d:%d: expected decimal integer, found '%c'\n", filename, line, col, c);
 		exit(EXIT_FAILURE);
 	}
-	ungetc(c, fin);
+	push_char(c);
 	skip_whitespace(1);
 	return atoi(buffer);
+}
+
+static void
+parse_expression(void)
+{
+	int c;
+
+	for(;;)
+	{
+		c = get_char("parsing expression", 1);
+		push_char(c);
+		if(isdigit(c))
+		{
+			parse_dec();
+		}
+		else if(isalpha(c) || c == '_')
+		{
+			parse_ident();
+		}
+		else
+		{
+			break;
+		}
+		if(NULL == parse_operator(0))
+		{
+			break;
+		}
+	}
 }
 
 static void
@@ -287,11 +331,33 @@ write_field(field_t *field)
 }
 
 static void
-write_table(const char *ident, fieldset_t *fields)
+free_fields(fieldset_t *fields)
 {
+	free(fields->fields);
+	fields->fields = NULL;
+	fields->nfields = 0;
+	fields->nbits = 0;
+}
+
+static void
+write_table(fieldset_t *fields)
+{
+	char ident[IDENT_SIZE];
 	size_t i, r, nbits, start;
 	int insec;
-
+	
+	if(!fields->nfields)
+	{
+		return;
+	}
+	if(fields->seq)
+	{
+		sprintf(ident, "%s_%d", fields->ident, fields->seq);
+	}
+	else
+	{
+		strcpy(ident, fields->ident);
+	}
 	fprintf(fout, "typedef struct %s_s %s_t;\n\n", ident, ident);
 	fprintf(fout, "struct %s_s\n"
 			"{\n", ident);
@@ -320,15 +386,8 @@ write_table(const char *ident, fieldset_t *fields)
 		}
 	}
 	fprintf(fout, "} PACKED_STRUCT;\n\n");
-}
-
-static void
-free_fields(fieldset_t *fields)
-{
-	free(fields->fields);
-	fields->fields = NULL;
-	fields->nfields = 0;
-	fields->nbits = 0;
+	fields->seq++;
+	free_fields(fields);
 }
 
 static void
@@ -345,7 +404,7 @@ add_field(fieldset_t *fields, const char *type, const char *ident, size_t bits)
 		bits = 8;
 	}
 	c = 0;
-	while(1)
+	for(;;)
 	{
 		if(c)
 		{
@@ -355,7 +414,6 @@ add_field(fieldset_t *fields, const char *type, const char *ident, size_t bits)
 		{
 			strcpy(id, ident);
 		}
-/*		fprintf(stderr, "trying %s\n", id); */
 		for(i = 0; i < fields->nfields; i++)
 		{
 			if(!strcmp(id, fields->fields[i].ident))
@@ -384,7 +442,6 @@ add_field(fieldset_t *fields, const char *type, const char *ident, size_t bits)
 		fprintf(stderr, "%s:%d:%d: Failed to allocate an extra field entry for %s %s:%d\n", filename, line, col, type, ident, bits);
 		exit(EXIT_FAILURE);
 	}
-/*	fprintf(stderr, "[type=%s, ident=%s, bits=%d, i=%d]\n", type, id, bits, (bits / 8) + 2); */
 	c = 0;
 	hilo = 0;
 	if(fcount == 2)
@@ -396,7 +453,6 @@ add_field(fieldset_t *fields, const char *type, const char *ident, size_t bits)
 	{
 		strncpy(fields->fields[fields->nfields].type, type, IDENT_SIZE - 1);
 		rem = 8 - (fields->nbits % 8);
-/*		fprintf(stderr, "[bits=%d, fields->nfields=%d, fields->nbits=%d, rem=%d]\n", bits, fields->nfields, fields->nbits, rem); */
 		if(!c && rem >= bits)
 		{
 			/* Doesn't span any octets */
@@ -433,38 +489,162 @@ add_field(fieldset_t *fields, const char *type, const char *ident, size_t bits)
 }
 
 static void
-parse_for(const char *base, int *seq)
+parse_for(fieldset_t *fields)
 {
 	expect_char('(');
-	parse_ident();
-	parse_operator();
-	parse_dec();
+	parse_expression();
 	expect_char(';');
 	skip_whitespace(1);
-	parse_ident();
-	parse_operator();
-	parse_ident();
+	parse_expression();
 	expect_char(';');
 	skip_whitespace(1);
-	parse_ident();
-	parse_operator();
+	parse_expression();
 	expect_char(')');
 	skip_whitespace(1);
 	expect_char('{');
-	parse_block(base, seq);
+	parse_block(fields);
 }
 
+static void
+parse_ifelse(fieldset_t *fields, const char *what)
+{
+	int c;
+	const char *s;
+
+	skip_whitespace(1);
+	if(!strcmp(what, "else"))
+	{
+		c = get_char("parsing else clause", 1);
+		if(isalpha(c))
+		{
+			push_char(c);
+			s = parse_ident();
+			if(strcmp(s, "if"))
+			{
+				fprintf(stderr, "%s:%d:%d: expected 'if' or block, found '%s'\n", filename, line, col, s);
+				exit(EXIT_FAILURE);
+			}
+			parse_ifelse(fields, "if");
+		}
+		else if(c == '{')
+		{
+			CHECKNL(c);
+			parse_block(fields);
+			return;
+		}
+		fprintf(stderr, "%s:%d:%d: expected 'if' or block, found '%c'\n", filename, line, col, c);
+		exit(EXIT_FAILURE);
+	}
+	skip_whitespace(1);
+	expect_char('(');
+	parse_expression();
+	expect_char(')');
+	skip_whitespace(1);
+	expect_char('{');
+	parse_block(fields);
+}
 
 static void
-parse_block(const char *base, int *seq)
+parse_attributes(fieldset_t *fields)
 {
-	char ident[IDENT_SIZE], type[IDENT_SIZE], field[IDENT_SIZE];
+	char attr[IDENT_SIZE], value[IDENT_SIZE];
 	int c;
-	fieldset_t fields;
-	size_t width;
 
-	memset(&fields, 0, sizeof(fields));
-	while(1)
+	for(;;)
+	{
+		skip_whitespace(1);
+		strcpy(attr, parse_ident());
+		expect_char('=');
+		skip_whitespace(1);
+		strcpy(value, parse_ident());
+		if(!strcmp(attr, "tag"))
+		{
+			strcpy(fields->next_tag, value);
+		}
+		else
+		{
+			fprintf(stderr, "%s:%d:%d: unknown attribute '%s'\n", filename, line, col, attr);
+			exit(EXIT_FAILURE);
+		}
+		skip_whitespace(1);
+		c = get_char("parsing attributes", 1);
+		CHECKNL(c);
+		if(c == ']')
+		{
+			return;
+		}
+		if(c == ',')
+		{
+			continue;
+		}
+		fprintf(stderr, "%s:%d:%d: expected ']' or ','\n", filename, line, col);
+		exit(EXIT_FAILURE);
+	}
+}
+
+/* If src has transient attributes, save the old values to dest and
+ * apply; otherwise zero dest appropriately such that a matching
+ * pop_attrs() will do nothing.
+ *
+ * If dest is NULL, push_attrs() merely applies transient attributes
+ * in src to its current status without saving anything for later
+ * restoration.
+ */
+static void
+push_attrs(fieldset_t *dest, fieldset_t *src)
+{
+	if(src && src->next_tag[0])
+	{
+		if(dest)
+		{
+			dest->seq = src->seq;
+			strcpy(dest->ident, src->ident);
+		}
+		strcpy(src->ident, src->next_tag);	   
+		src->next_tag[0] = 0;
+		src->seq = 0;
+		return;
+	}
+	if(dest)
+	{
+		dest->seq = 0;
+		dest->ident[0] = 0;
+	}
+}
+
+static void
+pop_attrs(fieldset_t *dest, fieldset_t *src)
+{
+	if(dest->ident[0])
+	{
+		src->seq = dest->seq;
+		strcpy(src->ident, dest->ident);
+	}
+}
+
+static int
+has_attrs(fieldset_t *src)
+{
+	if(src && src->next_tag[0])
+	{
+		return 1;
+	}
+	return 0;
+}
+
+static void
+parse_block(fieldset_t *fields)
+{
+	char type[IDENT_SIZE], field[IDENT_SIZE];
+	int c;
+	size_t width;
+	fieldset_t attrs;
+
+	/* attrs stores attributes when they're temporarily overridden
+	 * while we recurse into a block.
+	 */
+	memset(&attrs, 0, sizeof(attrs));
+	for(;;)
 	{
 		skip_whitespace(1);
 		c = get_char("parsing section", 1);
@@ -472,85 +652,82 @@ parse_block(const char *base, int *seq)
 		{
 			break;
 		}
-		ungetc(c, fin);
+		if(c == '[')
+		{
+			CHECKNL(c);
+			parse_attributes(fields);
+			continue;
+		}
+		if(c == '{')
+		{
+			CHECKNL(c);
+			write_table(fields);
+			push_attrs(&attrs, fields);
+			parse_block(fields);
+			pop_attrs(&attrs, fields);	  
+			continue;
+		}
+		push_char(c);
 		strcpy(type, parse_ident());
-/*		fprintf(stderr, "type = %s\n", type); */
 		if(!strcmp(type, "for"))
 		{
-			if(fields.nfields)
-			{
-				write_table(ident, &fields);
-				(*seq)++;
-				free_fields(&fields);
-			}
-			parse_for(base, seq);
+			write_table(fields);
+			push_attrs(&attrs, fields);
+			parse_for(fields);
+			pop_attrs(&attrs, fields);
 		}
-		else if(!strcmp(type, "if"))
+		else if(!strcmp(type, "if") || !strcmp(type, "else"))
 		{
-			if(fields.nfields)
-			{
-				write_table(ident, &fields);
-				(*seq)++;
-				free_fields(&fields);
-			}
-			/* parse_if() */
+			write_table(fields);
+			push_attrs(&attrs, fields);
+			parse_ifelse(fields, type);
+			pop_attrs(&attrs, fields);
 		}
 		else if(!strcmp(type, "while"))
 		{
-			if(fields.nfields)
-			{
-				write_table(ident, &fields);
-				(*seq)++;
-				free_fields(&fields);
-			}
+			write_table(fields);
+			push_attrs(&attrs, fields);
 			/* parse_while() */
+			pop_attrs(&attrs, fields);
 		}
 		else
 		{
+			if(has_attrs(fields))
+			{
+				fprintf(stderr, "%s:%d:%d: expected block following attributes\n", filename, line, col);
+				exit(EXIT_FAILURE);
+			}
 			c = get_char("parsing field", 1);
 			if(c == '(')
 			{
+				CHECKNL(c);
 				/* variable descriptor() */
 				skip_whitespace(1);
 				expect_char(')');
 				skip_whitespace(1);
 				expect_char(';');
 				skip_whitespace(1);
-				if(fields.nfields)
-				{
-					write_table(ident, &fields);
-					(*seq)++;
-					free_fields(&fields);
-				}
+				write_table(fields);
 			}
 			else
 			{
 				ungetc(c, fin);
-				if(!fields.nfields)
-				{
-					if(*seq)
-					{
-						snprintf(ident, IDENT_SIZE, "%s_%d", base, *seq);
-					}
-					else
-					{
-						strcpy(ident, base);
-					}
-				}
 				strcpy(field, parse_ident());
-/*			fprintf(stderr, "field = %s\n", field); */
 				c = get_char("parsing field", 1);
 				if(c == ':')
 				{
 					width = parse_dec();
-/*				fprintf(stderr, "found field length = %d\n", width); */
 				}
 				else
 				{
 					width = 0;
-/*				fprintf(stderr, "field with no length\n"); */
 				}
-				add_field(&fields, type, field, width);
+				if(fields->next_tag[0])
+				{
+					strcpy(field, fields->next_tag);
+					fields->next_tag[0] = 0;
+				}
+				add_field(fields, type, field, width);
 				expect_char(';');
 			}
 		}
@@ -560,40 +737,41 @@ parse_block(const char *base, int *seq)
 			c = get_char("parsing section", 1);
 		}
 		while(c == ';');
-		ungetc(c, fin);			
+		push_char(c);
 	}
-/*	fprintf(stderr, "[found end of table]\n"); */
-	if(fields.nfields)
-	{
-		write_table(ident, &fields);
-		(*seq)++;
-		free_fields(&fields);
-	}
+	write_table(fields);
 }
 
 static void
-parse_table(void)
+parse_table(fieldset_t *attrs)
 {
-	char base[IDENT_SIZE];
-	int seq;
+	fieldset_t fields;
 
-	strcpy(base, parse_ident());
+	if(attrs)
+	{
+		memcpy(&fields, attrs, sizeof(fields));
+	}
+	else
+	{
+		memset(&fields, 0, sizeof(fields));
+	}
+	strcpy(fields.ident, parse_ident());
+	push_attrs(NULL, &fields);
 	expect_char('(');
 	skip_whitespace(1);
 	expect_char(')');
 	skip_whitespace(1);
 	expect_char('{');
-/*	fprintf(stderr, "[starting table: '%s']\n", ident); */
-	seq = 0;
-	parse_block(base, &seq);
+	parse_block(&fields);
 }
 			
 int
 main(int argc, char **argv)
 {
 	int c;
-	char *p;
-	   
+	const char *p;
+	fieldset_t fields;
+
 	(void) argc;
 	(void) argv;
 
@@ -609,24 +787,22 @@ main(int argc, char **argv)
 				perror(argv[1]);
 				exit(EXIT_FAILURE);
 			}
-			if((p = strrchr(argv[1], '.')))
-			{
-				if(!strcasecmp(p, ".idl"))
-				{
-					*p = 0;
-				}
-			}
 			p = strrchr(argv[1], '/');
 			if(p)
 			{
-				p++;
+				filename = strdup(p + 1);
 			}
 			else
 			{
-				p = argv[1];
+				filename = strdup(argv[1]);
 			}
+			p = filename;
 			for(c = 0; c < 32 && *p; p++)
 			{
+				if(*p == '.' && !strcmp(p, ".idl"))
+				{
+					break;
+				}
 				if(isalnum(*p))
 				{
 					header_macro[c] = toupper(*p);
@@ -653,9 +829,9 @@ main(int argc, char **argv)
 	}
 	if(header_macro[0])
 	{
-		fprintf(fout, "/* Generated automatically by gentables */\n\n"
+		fprintf(fout, "/* Generated automatically from %s by gentables */\n\n"
 				"#ifndef %s\n"
-				"# define %s\n\n", header_macro, header_macro);
+				"# define %s\n\n", filename, header_macro, header_macro);
 		fprintf(fout, "# undef PACKED_STRUCT\n"
 				"# ifdef __GNUC__\n"
 				"#  define PACKED_STRUCT __attribute__((__packed__))\n"
@@ -663,17 +839,25 @@ main(int argc, char **argv)
 				"#  define PACKED_STRUCT /* */\n"
 				"# endif\n\n");
 	}
-	while(1)
+	memset(&fields, 0, sizeof(fields));
+	for(;;)
 	{
 		skip_whitespace(0);
-		if((c = getc(fin)) == EOF)
+		if((c = get_char("at top level", 0)) == EOF)
 		{
 			break;
 		}
 		if(isalpha(c))
 		{
-			ungetc(c, fin);
-			parse_table();
+			push_char(c);
+			parse_table(&fields);
+			memset(&fields, 0, sizeof(fields));
+			continue;
+		}
+		else if(c == '[')
+		{
+			CHECKNL(c);
+			parse_attributes(&fields);
 			continue;
 		}
 		fprintf(stderr, "%s:%d:%d: expecting section identifier, found '%c'\n", filename, line, col, c);
