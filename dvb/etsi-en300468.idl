@@ -1,0 +1,59 @@
+/****
+ * The sections and descriptors described below are taken from ETSI EN 300 468
+ * (the document specifying DVB SI).
+ *
+ * For any portions of this file which constitute copyright work of which I
+ * am the author, I hereby grant any and all persons in receipt of this file
+ * an irrevocable non-exclusive worldwide royalty-free license to use,
+ * transform, distribute, sub-license, and modify those portions in any
+ * manner that they see fit.
+ *
+ * -- Mo McRoberts <mo.mcroberts@nexgenta.com>
+ ****/
+
+/* This is not real (CORBA, XP, DCE, Microsoft) IDL. This is a set of section
+ * and descriptor definitions described by the DVB as part of ETSI EN 300 486.
+ *
+ * gentables converts this file into a C header which can be used
+ * by DVB section/descriptor parsers.
+ */
+
+/* table_id = 0x40: network_information_section (actual_network)
+ * table_id = 0x41: network_information_section (other_network)
+ */
+
+network_information_section() {
+	uimsbf table_id:8;
+	bslbf section_syntax_indicator:1;
+	bslbf reserved_future_use:1;
+	bslbf reserved:2;
+	uimsbf section_length:12;
+	uimsbf network_id:16;
+	bslbf reserved:2;
+	uimbsf version_number:5;
+	bslbf current_next_indicator:1;
+	uimsbf section_number:8;
+	uimsbf last_section_number:8;
+	bslbf reserved_future_use:4;
+	uimsbf network_descriptors_length:12;
+	for(i=0; i < N; i++) {
+		descriptor();
+	}
+	bslbf reserved_future_use:4;
+	uimsbf transport_stream_loop_length:12;
+	[tag=nit_ts]
+	for(i=0; i < N; i++) {
+		uimsbf transport_stream_id:16;
+		uimsbf original_network_id:16;
+		bslbf reserved_future_use:4;
+		uimsbf transport_descriptors_length:12;
+		for(j=0; j < N; j++) {
+			descriptor();
+		}
+	}
+	rpchof CRC_32:32;
+}
+
+/* table_id = 0x42: service_description_section - actual_transport_stream
+ * table_id = 0x46: service_description_section - other_transport_stream
+ */

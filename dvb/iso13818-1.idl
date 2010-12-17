@@ -1,27 +1,25 @@
-/*
- * Copyright 2010 Mo McRoberts.
+/****
+ * The sections and descriptors described below are taken from ISO 13818-1
+ * (the document specifying the MPEG Transport Stream).
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * For any portions of this file which constitute copyright work of which I
+ * am the author, I hereby grant any and all persons in receipt of this file
+ * an irrevocable non-exclusive worldwide royalty-free license to use,
+ * transform, distribute, sub-license, and modify those portions in any
+ * manner that they see fit.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- */
+ * -- Mo McRoberts <mo.mcroberts@nexgenta.com>
+ ****/
 
 /* This is not real (CORBA, XP, DCE, Microsoft) IDL. This is a set of section
- * and descriptor definitions described by the ISO (MPEG) and ETSI (DVB)
- * specifications.
+ * and descriptor definitions described by the ISO (MPEG) as part of
+ * ISO 13818-1/ITU-T Rec. H.222.0.
  *
- * gendvbtables converts this file into a C header which can be used
- * by DVB section/descriptor parsers.
+ * gentables converts this file into a C header which can be used
+ * by MPEG section/descriptor parsers.
  */
 
+/* Generic programme-specific information section prologue */
 psi_section() {
 	uimsbf table_id:8;
 	bslbf section_syntax_indicator:1;
@@ -31,6 +29,7 @@ psi_section() {
 }
 
 /* PID = 0x0000, table_id = 0x00: Programme Association Table (PAT) */
+[tag=pat]
 programme_association_section() {
 	uimsbf table_id:8;
 	bslbf section_syntax_indicator:1;
@@ -43,6 +42,7 @@ programme_association_section() {
 	bslbf current_next_indicator:1;
 	uimsbf section_number:8;
 	uimsbf last_section_number:8;
+	[tag=pat_program]
 	for(i = 0; i < N; i++) {
 		uimsbf program_number:16;
 		bslbf reserved:3;
@@ -52,6 +52,7 @@ programme_association_section() {
 }
 
 /* table_id = 0x01: Conditional Access Table (CAT) */
+[tag=cat]
 CA_section() {
 	uimsbf table_id:8;
 	bslbf section_syntax_indicator:1;
@@ -70,6 +71,7 @@ CA_section() {
 }
 
 /* table_id = 0x02: Program Map Table (PMT) */
+[tag=pmt]
 TS_program_map_section() {
 	uimsbf table_id:8;
 	bslbf section_syntax_indicator:1;
@@ -89,6 +91,7 @@ TS_program_map_section() {
 	for(i = 0; i < N; i++) {
 		descriptor();
 	}
+	[tag=pmt_program]
 	for(i = 0; i < N1; i++) {
 		uimsbf stream_type:8;
 		bslbf reserved:3;
@@ -102,40 +105,58 @@ TS_program_map_section() {
 	rpchof CRC_32:32;
 }
 
-/* Private section */
-private_section() {
-
-}
-
-network_information_section() {
+/* table_id = 0x03: TS_description_section */
+[tag=tsdt]
+TS_description_section() {
 	uimsbf table_id:8;
 	bslbf section_syntax_indicator:1;
 	bslbf reserved_future_use:1;
 	bslbf reserved:2;
 	uimsbf section_length:12;
-	uimsbf network_id:16;
-	bslbf reserved:2;
-	uimbsf version_number:5;
+	bslbf reserved:18;
+	uimsbf version_number:5;
 	bslbf current_next_indicator:1;
 	uimsbf section_number:8;
 	uimsbf last_section_number:8;
-	bslbf reserved_future_use:4;
-	uimsbf network_descriptors_length:12;
-	for(i=0; i < N; i++) {
+	for(i = 0; i < N; i++) {
 		descriptor();
-	}
-	bslbf reserved_future_use:4;
-	uimsbf transport_stream_loop_length:12;
-	for(i=0; i < N; i++) {
-		uimsbf transport_stream_id:16;
-		uimsbf original_network_id:16;
-		bslbf reserved_future_use:4;
-		uimsbf transport_descriptors_length:12;
-		for(j=0; j < N; j++) {
-			descriptor();
-		}
 	}
 	rpchof CRC_32:32;
 }
 
-			
+/* table_id = 0x04: ISO_IEC_14496_scene_description_section */
+
+/* table_id = 0x05: ISO_IEC_14496_object_descriptor_section */
+
+/* 0x06 >= table_id >= 0x37: Reserved */
+
+/* 0x38 >= table_id >= 0x3F: Defined in ISO/IEC 13818-6 */
+
+/* 0x40 >= table_id >= 0xFE: User private */
+private_section() {
+	uimsbf table_id:8;
+	bslbf section_syntax_indicator:1;
+	bslbf private_indicator:1;
+	bslbf reserved:2;
+	uimsbf private_section_length:12;
+	[tag=private_bytes]
+	if(section_syntax_indicator == 0) {
+		for(i = 0; i < N; i++) {
+			bslbf private_data_byte:8;
+		}
+	}
+	[tag=private_extension]
+	else
+	{
+		uimsbf table_id_extension:16;
+		bslbf reserved:2;
+		uimsbf version_number:5;
+		bslbf current_next_indicator:1;
+		uimsbf section_number:8;
+		uimsbf last_section_number:8;
+		for(i = 0; i < private_section_length - 9; i++) {
+			bslbf private_data_byte:8;
+		}
+		rpchof CRC_32:32;
+	}
+}
